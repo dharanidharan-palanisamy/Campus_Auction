@@ -98,16 +98,6 @@ export default function HomePage() {
                 Search
               </button>
             </form>
-
-            {/* Quick Action Badges */}
-            <div className="mt-4 flex flex-wrap justify-center gap-2 text-xs text-slate-500 font-medium">
-              <span>Trending:</span>
-              <Link href="/auctions?q=Bicycle" className="hover:text-indigo-600 underline">Bicycles</Link>
-              <span>•</span>
-              <Link href="/auctions?q=Calculator" className="hover:text-indigo-600 underline">Calculators</Link>
-              <span>•</span>
-              <Link href="/auctions?q=Algorithms" className="hover:text-indigo-600 underline">Textbooks</Link>
-            </div>
           </div>
         </div>
       </section>
