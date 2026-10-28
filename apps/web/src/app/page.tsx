@@ -184,11 +184,24 @@ export default function HomePage() {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {auctions.map((auction) => (
-              <AuctionCard key={auction.id} auction={auction} />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {auctions.slice(0, 4).map((auction) => (
+                <AuctionCard key={auction.id} auction={auction} />
+              ))}
+            </div>
+
+            {/* View More Products Button */}
+            <div className="mt-12 text-center">
+              <Link
+                href="/auctions"
+                className="inline-flex items-center gap-2 px-8 py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-lg shadow-indigo-200 hover:shadow-xl hover:shadow-indigo-300 transition duration-200 group"
+              >
+                <span>View More Products</span>
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </Link>
+            </div>
+          </>
         )}
       </section>
 
