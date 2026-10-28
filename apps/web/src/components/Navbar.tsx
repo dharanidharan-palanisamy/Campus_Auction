@@ -18,19 +18,8 @@ import {
 } from 'lucide-react';
 
 export function Navbar() {
-  const { user, login, logout } = useAuth();
+  const { user, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  // Quick switch between accounts for testing with real backend JWT authentication
-  const switchDemoAccount = async (role: 'student1' | 'student2' | 'admin') => {
-    if (role === 'admin') {
-      await login('admin@campus.edu', 'CampusPassword123!');
-    } else if (role === 'student1') {
-      await login('aarav.sharma@campus.edu', 'CampusPassword123!');
-    } else {
-      await login('priya.patel@campus.edu', 'CampusPassword123!');
-    }
-  };
 
   return (
     <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200">
@@ -70,28 +59,6 @@ export function Navbar() {
 
           {/* User Controls & Actions */}
           <div className="hidden md:flex items-center gap-3">
-            {/* Demo Quick Switcher Badge */}
-            <div className="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs">
-              <span className="text-slate-500 px-1 font-medium">Demo:</span>
-              <button 
-                onClick={() => switchDemoAccount('student1')} 
-                className={`px-2 py-0.5 rounded font-semibold transition ${user?.campusAlias === 'Aarav_Tech' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-200'}`}
-              >
-                Aarav
-              </button>
-              <button 
-                onClick={() => switchDemoAccount('student2')} 
-                className={`px-2 py-0.5 rounded font-semibold transition ${user?.campusAlias === 'PriyaP' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-200'}`}
-              >
-                Priya
-              </button>
-              <button 
-                onClick={() => switchDemoAccount('admin')} 
-                className={`px-2 py-0.5 rounded font-semibold transition ${user?.role === 'ADMIN' ? 'bg-purple-600 text-white' : 'text-slate-600 hover:bg-slate-200'}`}
-              >
-                Admin
-              </button>
-            </div>
 
             <Link
               href="/dashboard/listings/new"
@@ -162,14 +129,6 @@ export function Navbar() {
               Admin Workspace
             </Link>
           )}
-          <div className="pt-3 border-t border-slate-200">
-            <div className="text-xs text-slate-400 uppercase font-bold mb-2">Switch Demo Account</div>
-            <div className="flex gap-2">
-              <button onClick={() => switchDemoAccount('student1')} className="px-3 py-1 bg-slate-100 rounded text-xs font-semibold">Aarav</button>
-              <button onClick={() => switchDemoAccount('student2')} className="px-3 py-1 bg-slate-100 rounded text-xs font-semibold">Priya</button>
-              <button onClick={() => switchDemoAccount('admin')} className="px-3 py-1 bg-purple-100 text-purple-700 rounded text-xs font-semibold">Admin</button>
-            </div>
-          </div>
         </div>
       )}
     </header>
