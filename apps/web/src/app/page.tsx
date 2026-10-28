@@ -47,7 +47,10 @@ export default function HomePage() {
   }, []);
 
   const closingSoonAuctions = auctions
-    .filter((a) => new Date(a.closingTime).getTime() > Date.now())
+    .filter((a) => {
+      const remainingMs = new Date(a.closingTime).getTime() - Date.now();
+      return remainingMs > 0 && remainingMs <= 3 * 3600 * 1000;
+    })
     .sort((a, b) => new Date(a.closingTime).getTime() - new Date(b.closingTime).getTime())
     .slice(0, 4);
 

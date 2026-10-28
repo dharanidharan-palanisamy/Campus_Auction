@@ -17,6 +17,8 @@ auctionRouter.get('/', async (req, res) => {
       maxPrice,
       status = 'ACTIVE',
       sort = 'closing_soon',
+      closing_soon,
+      max_hours = '3',
       page = '1',
       limit = '12'
     } = req.query;
@@ -27,8 +29,18 @@ auctionRouter.get('/', async (req, res) => {
 
     const now = new Date();
     const where: any = {};
+    const isClosingSoonOnly = closing_soon === 'true';
 
-    if (status && status !== 'ALL') {
+    if (isClosingSoonOnly) {
+      // Specifically filter only products ending in less than max_hours (default 3 hours)
+      const maxHours = parseFloat(max_hours as string) || 3;
+      const cutoff = new Date(now.getTime() + maxHours * 3600 * 1000);
+      where.status = 'ACTIVE';
+      where.closingTime = {
+        gt: now,
+        lte: cutoff
+      };
+    } else if (status && status !== 'ALL') {
       if (status === 'ACTIVE') {
         // Active = status ACTIVE + closing time in the future
         where.status = 'ACTIVE';
@@ -79,8 +91,13 @@ auctionRouter.get('/', async (req, res) => {
     if (sort === 'newest') orderBy = { createdAt: 'desc' };
     if (sort === 'price_low') orderBy = { currentLeadingBidInCents: 'asc' };
     if (sort === 'price_high') orderBy = { currentLeadingBidInCents: 'desc' };
-    // For 'all' status view, default to newest
-    if (!status || status === 'ALL') orderBy = { createdAt: 'desc' };
+    // For 'all' status view without closing_soon, default to newest
+    if ((!status || status === 'ALL') && !isClosingSoonOnly && sort !== 'closing_soon') {
+      orderBy = { createdAt: 'desc' };
+    }
+    if (isClosingSoonOnly) {
+      orderBy = { closingTime: 'asc' };
+    }
 
     const [total, auctions] = await Promise.all([
       prisma.auctionListing.count({ where }),
