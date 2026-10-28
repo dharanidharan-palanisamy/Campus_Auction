@@ -18,38 +18,17 @@ import {
 } from 'lucide-react';
 
 export function Navbar() {
-  const { user, logout, setUserDirectly } = useAuth();
+  const { user, login, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Quick switch between accounts for testing
-  const switchDemoAccount = (role: 'student1' | 'student2' | 'admin') => {
+  // Quick switch between accounts for testing with real backend JWT authentication
+  const switchDemoAccount = async (role: 'student1' | 'student2' | 'admin') => {
     if (role === 'admin') {
-      setUserDirectly({
-        id: 'admin-id',
-        email: 'admin@campus.edu',
-        fullName: 'Campus Administrator',
-        campusAlias: 'AdminOfficial',
-        studentId: 'ADM-001',
-        role: 'ADMIN'
-      }, 'mock-admin-token');
+      await login('admin@campus.edu', 'CampusPassword123!');
     } else if (role === 'student1') {
-      setUserDirectly({
-        id: 'student1-id',
-        email: 'aarav.sharma@campus.edu',
-        fullName: 'Aarav Sharma',
-        campusAlias: 'Aarav_Tech',
-        studentId: 'CS2023-042',
-        role: 'STUDENT'
-      }, 'mock-student1-token');
+      await login('aarav.sharma@campus.edu', 'CampusPassword123!');
     } else {
-      setUserDirectly({
-        id: 'student2-id',
-        email: 'priya.patel@campus.edu',
-        fullName: 'Priya Patel',
-        campusAlias: 'PriyaP',
-        studentId: 'EE2024-118',
-        role: 'STUDENT'
-      }, 'mock-student2-token');
+      await login('priya.patel@campus.edu', 'CampusPassword123!');
     }
   };
 
