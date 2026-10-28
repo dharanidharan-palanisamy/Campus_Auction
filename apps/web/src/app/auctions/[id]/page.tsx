@@ -287,7 +287,7 @@ function AuctionDetailContent() {
                 placeholder="Ask the seller about wear, battery life, included items..."
                 value={newQuestion}
                 onChange={(e) => setNewQuestion(e.target.value)}
-                className="flex-1 px-4 py-2 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="flex-1 px-4 py-2 text-sm text-slate-900 placeholder:text-slate-500 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
               <button
                 type="submit"
