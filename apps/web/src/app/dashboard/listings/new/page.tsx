@@ -41,6 +41,17 @@ export default function CreateListingPage() {
       return;
     }
     setErrorMsg('');
+
+    // Frontend validation before submitting
+    if (description.trim().length < 10) {
+      setErrorMsg('Description must be at least 10 characters. Please describe the item in detail.');
+      return;
+    }
+    if (title.trim().length < 3) {
+      setErrorMsg('Title must be at least 3 characters.');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -69,7 +80,20 @@ export default function CreateListingPage() {
       if (res.ok && data.success) {
         router.push(`/auctions/${data.data.id}`);
       } else {
-        setErrorMsg(data.message || 'Failed to create listing');
+        // Parse Zod validation error arrays into readable messages
+        let errText: string = data.message || 'Failed to create listing';
+        try {
+          const parsed = JSON.parse(data.message);
+          if (Array.isArray(parsed)) {
+            errText = parsed
+              .map((e: any) => {
+                const field = e.path?.join('.') || 'field';
+                return `${field}: ${e.message}`;
+              })
+              .join(' • ');
+          }
+        } catch {}
+        setErrorMsg(errText);
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Network error');

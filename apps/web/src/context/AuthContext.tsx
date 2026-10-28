@@ -31,20 +31,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check saved session in localStorage for convenient development
+    // Validate saved session by calling /me endpoint
     const savedToken = localStorage.getItem('campus_token');
     const savedUser = localStorage.getItem('campus_user');
 
     if (savedToken && savedUser) {
+      // Optimistically restore from localStorage first for fast UI
       try {
         setToken(savedToken);
         setUser(JSON.parse(savedUser));
       } catch (e) {
         localStorage.removeItem('campus_token');
         localStorage.removeItem('campus_user');
+        setIsLoading(false);
+        return;
       }
+      // Then verify token is still valid with the API
+      fetch(`${API_BASE}/auth/me`, {
+        headers: { Authorization: `Bearer ${savedToken}` }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && data.user) {
+            setUser(data.user);
+            localStorage.setItem('campus_user', JSON.stringify(data.user));
+          } else {
+            // Token rejected — clear session
+            setUser(null);
+            setToken(null);
+            localStorage.removeItem('campus_token');
+            localStorage.removeItem('campus_user');
+          }
+        })
+        .catch(() => {
+          // Network error — keep local session, will fail gracefully on next API call
+        })
+        .finally(() => setIsLoading(false));
+    } else {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }, []);
 
   const login = async (email: string, password: string) => {

@@ -38,8 +38,15 @@ function BrowseAuctionsContent() {
   useEffect(() => {
     setLoading(true);
     const params = new URLSearchParams();
-    if (q) params.set('q', q);
-    if (selectedCategory) params.set('category', selectedCategory);
+    // Smart: if q matches a category name exactly, switch to category filter
+    const matchedCategory = categories.find(
+      (c) => c.name.toLowerCase() === q.toLowerCase()
+    );
+    const effectiveQ = matchedCategory ? '' : q;
+    const effectiveCategory = matchedCategory ? matchedCategory.slug : selectedCategory;
+
+    if (effectiveQ) params.set('q', effectiveQ);
+    if (effectiveCategory) params.set('category', effectiveCategory);
     if (condition) params.set('condition', condition);
     if (sort) params.set('sort', sort);
 
@@ -49,7 +56,7 @@ function BrowseAuctionsContent() {
         if (data.success) setAuctions(data.data);
       })
       .finally(() => setLoading(false));
-  }, [q, selectedCategory, condition, sort]);
+  }, [q, selectedCategory, condition, sort, categories]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">

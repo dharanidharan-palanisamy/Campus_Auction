@@ -55,6 +55,11 @@ authRouter.post('/register', async (req, res) => {
 
     return res.status(201).json({ success: true, user, token });
   } catch (error: any) {
+    // Return readable Zod validation errors
+    if (error?.errors) {
+      const msg = error.errors.map((e: any) => `${e.path?.join('.') || 'field'}: ${e.message}`).join('; ');
+      return res.status(400).json({ success: false, message: msg });
+    }
     return res.status(400).json({ success: false, message: error.message || 'Registration failed' });
   }
 });

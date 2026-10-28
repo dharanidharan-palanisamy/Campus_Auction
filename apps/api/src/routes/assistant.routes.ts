@@ -32,7 +32,8 @@ assistantRouter.post('/chat', authenticateToken, async (req: AuthRequest, res) =
       const listing = await prisma.auctionListing.findFirst({
         where: {
           title: { contains: query },
-          status: 'ACTIVE'
+          status: 'ACTIVE',
+          closingTime: { gt: new Date() }
         },
         include: { seller: { select: { campusAlias: true } } }
       });
@@ -101,7 +102,7 @@ assistantRouter.post('/chat', authenticateToken, async (req: AuthRequest, res) =
       if (lower.includes('drafter')) searchTerms.push('drafter');
 
       const allActive = await prisma.auctionListing.findMany({
-        where: { status: 'ACTIVE' },
+        where: { status: 'ACTIVE', closingTime: { gt: new Date() } },
         include: { category: true }
       });
 
