@@ -85,7 +85,7 @@ export default function HomePage() {
                 placeholder="Search bicycles, Casio calculators, CLRS textbooks..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full px-3 py-2 text-sm text-slate-900 bg-transparent focus:outline-none"
+                className="w-full px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 bg-transparent focus:outline-none"
               />
               <button
                 type="submit"
