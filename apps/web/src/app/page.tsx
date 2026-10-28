@@ -167,14 +167,9 @@ export default function HomePage() {
 
       {/* 4. Active Marketplace Listings */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h2 className="text-2xl font-black text-slate-900">Featured Campus Auctions</h2>
-            <p className="text-sm text-slate-500">Verified student listings available for campus handover</p>
-          </div>
-          <Link href="/auctions" className="text-sm font-bold text-indigo-600 hover:underline flex items-center gap-1">
-            Browse All <ArrowRight className="w-4 h-4" />
-          </Link>
+        <div className="mb-8">
+          <h2 className="text-2xl font-black text-slate-900">Featured Campus Auctions</h2>
+          <p className="text-sm text-slate-500">Verified student listings available for campus handover</p>
         </div>
 
         {isLoading ? (
