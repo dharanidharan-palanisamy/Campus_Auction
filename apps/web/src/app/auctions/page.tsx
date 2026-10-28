@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { AuctionCard } from '@/components/AuctionCard';
-import { Search, SlidersHorizontal, Zap, CheckCircle2, LayoutGrid, Clock, Flame, AlertCircle } from 'lucide-react';
+import { Search, SlidersHorizontal, Zap, CheckCircle2, LayoutGrid, Clock, X } from 'lucide-react';
 import { Suspense } from 'react';
 
 export default function BrowseAuctionsPage() {
@@ -17,34 +17,26 @@ export default function BrowseAuctionsPage() {
 const STATUS_TABS = [
   { value: 'ALL', label: 'All Products', icon: LayoutGrid },
   { value: 'ACTIVE', label: 'Live Now', icon: Zap },
-  { value: 'CLOSING_SOON', label: 'Closing Soon (< 3h)', icon: Clock },
   { value: 'ENDED', label: 'Sold / Ended', icon: CheckCircle2 },
 ];
 
 function BrowseAuctionsContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const initialQ = searchParams.get('q') || '';
   const initialCategory = searchParams.get('category') || '';
-  const initialClosingSoon = searchParams.get('closing_soon') === 'true';
+  const isClosingSoon = searchParams.get('closing_soon') === 'true';
 
   const [auctions, setAuctions] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [q, setQ] = useState(initialQ);
   const [selectedCategory, setSelectedCategory] = useState(initialCategory);
   const [condition, setCondition] = useState('');
-  const [statusTab, setStatusTab] = useState<'ALL' | 'ACTIVE' | 'CLOSING_SOON' | 'ENDED'>(
-    initialClosingSoon ? 'CLOSING_SOON' : 'ALL'
+  const [statusTab, setStatusTab] = useState<'ALL' | 'ACTIVE' | 'ENDED'>(
+    isClosingSoon ? 'ACTIVE' : 'ALL'
   );
-  const [sort, setSort] = useState(initialClosingSoon ? 'closing_soon' : 'newest');
+  const [sort, setSort] = useState(isClosingSoon ? 'closing_soon' : 'newest');
   const [loading, setLoading] = useState(true);
-
-  // Sync state if URL query param changes
-  useEffect(() => {
-    if (searchParams.get('closing_soon') === 'true') {
-      setStatusTab('CLOSING_SOON');
-      setSort('closing_soon');
-    }
-  }, [searchParams]);
 
   useEffect(() => {
     fetch('http://localhost:4000/api/v1/auctions/categories')
@@ -67,7 +59,7 @@ function BrowseAuctionsContent() {
     if (effectiveCategory) params.set('category', effectiveCategory);
     if (condition) params.set('condition', condition);
 
-    if (statusTab === 'CLOSING_SOON') {
+    if (isClosingSoon) {
       params.set('closing_soon', 'true');
       params.set('max_hours', '3');
       params.set('sort', 'closing_soon');
@@ -83,11 +75,10 @@ function BrowseAuctionsContent() {
         if (data.success) setAuctions(data.data);
       })
       .finally(() => setLoading(false));
-  }, [q, selectedCategory, condition, sort, statusTab, categories]);
+  }, [q, selectedCategory, condition, sort, statusTab, isClosingSoon, categories]);
 
-  // Client-side strict filter to guarantee:
-  // In 'CLOSING_SOON' tab: ONLY products with <= 3 hours remaining are displayed
-  const displayAuctions = statusTab === 'CLOSING_SOON'
+  // Client-side strict filter if in closing soon mode
+  const displayAuctions = isClosingSoon
     ? auctions.filter((a) => {
         const remainingMs = new Date(a.closingTime).getTime() - Date.now();
         return remainingMs > 0 && remainingMs <= 3 * 3600 * 1000;
@@ -102,7 +93,7 @@ function BrowseAuctionsContent() {
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          {statusTab === 'CLOSING_SOON' ? (
+          {isClosingSoon ? (
             <div>
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-bold mb-2">
                 <Clock className="w-3.5 h-3.5" />
@@ -136,40 +127,58 @@ function BrowseAuctionsContent() {
         </div>
       </div>
 
-      {/* Status Tabs */}
-      <div className="flex flex-wrap items-center gap-2 mb-5">
-        {STATUS_TABS.map(({ value, label, icon: Icon }) => {
-          const isActive = statusTab === value;
-          const isUrgentTab = value === 'CLOSING_SOON';
-          return (
-            <button
-              key={value}
-              onClick={() => {
-                setStatusTab(value as any);
-                if (value === 'CLOSING_SOON' || value === 'ACTIVE') setSort('closing_soon');
-                else setSort('newest');
-              }}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${
-                isActive
-                  ? isUrgentTab
-                    ? 'bg-amber-600 text-white border-amber-600 shadow-sm shadow-amber-200'
-                    : 'bg-indigo-600 text-white border-indigo-600 shadow-sm shadow-indigo-200'
-                  : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
-              }`}
-            >
-              <Icon className="w-3.5 h-3.5" />
-              {label}
-            </button>
-          );
-        })}
+      {/* Active Filter Banner when in Closing Soon URL */}
+      {isClosingSoon && (
+        <div className="mb-6 flex items-center justify-between p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-900 shadow-sm">
+          <div className="flex items-center gap-2">
+            <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>
+              Currently filtering by <strong>Closing Soon (under 3 hours remaining)</strong>.
+            </span>
+          </div>
+          <button
+            onClick={() => router.push('/auctions')}
+            className="flex items-center gap-1 font-bold text-amber-800 hover:text-amber-950 px-2.5 py-1 rounded-lg hover:bg-amber-100 transition"
+          >
+            <X className="w-3.5 h-3.5" />
+            Show All Products
+          </button>
+        </div>
+      )}
 
-        {/* Summary counts */}
-        {statusTab === 'ALL' && !loading && (
-          <span className="ml-auto text-xs text-slate-400 font-medium">
-            {auctions.length} total · <span className="text-emerald-600 font-semibold">{liveCount} live</span> · {endedCount} ended
-          </span>
-        )}
-      </div>
+      {/* Status Tabs (All Products / Live Now / Sold & Ended) */}
+      {!isClosingSoon && (
+        <div className="flex items-center gap-2 mb-5">
+          {STATUS_TABS.map(({ value, label, icon: Icon }) => {
+            const isActive = statusTab === value;
+            return (
+              <button
+                key={value}
+                onClick={() => {
+                  setStatusTab(value as any);
+                  if (value === 'ACTIVE') setSort('closing_soon');
+                  else setSort('newest');
+                }}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${
+                  isActive
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm shadow-indigo-200'
+                    : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                {label}
+              </button>
+            );
+          })}
+
+          {/* Summary counts */}
+          {statusTab === 'ALL' && !loading && (
+            <span className="ml-auto text-xs text-slate-400 font-medium">
+              {auctions.length} total · <span className="text-emerald-600 font-semibold">{liveCount} live</span> · {endedCount} ended
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Filters Toolbar */}
       <div className="flex flex-wrap items-center gap-3 p-4 bg-white rounded-2xl border border-slate-200 shadow-sm mb-8">
@@ -203,8 +212,8 @@ function BrowseAuctionsContent() {
           <option value="FAIR">Fair</option>
         </select>
 
-        {/* Sort (only show relevant options when not in closing_soon mode) */}
-        {statusTab !== 'CLOSING_SOON' && (
+        {/* Sort */}
+        {!isClosingSoon && (
           <div className="ml-auto flex items-center gap-2">
             <span className="text-xs text-slate-400">Sort by:</span>
             <select
@@ -230,15 +239,15 @@ function BrowseAuctionsContent() {
         </div>
       ) : displayAuctions.length === 0 ? (
         <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-slate-300 space-y-3">
-          <div className="text-4xl">⏱️</div>
+          <div className="text-4xl">🔍</div>
           <p className="text-slate-700 font-bold text-base">
-            {statusTab === 'CLOSING_SOON'
-              ? 'No auctions are currently closing within 3 hours.'
+            {isClosingSoon
+              ? 'No active auctions are currently closing within 3 hours.'
               : 'No auctions matched your filter criteria.'}
           </p>
           <p className="text-slate-400 text-xs">
-            {statusTab === 'CLOSING_SOON'
-              ? 'Check back soon for urgent last-minute bids, or explore all live products.'
+            {isClosingSoon
+              ? 'Check back soon for last-minute anti-sniping bids, or browse all live items.'
               : 'Try clearing your filters or changing search keywords.'}
           </p>
           <button
@@ -246,7 +255,11 @@ function BrowseAuctionsContent() {
               setQ('');
               setSelectedCategory('');
               setCondition('');
-              setStatusTab('ALL');
+              if (isClosingSoon) {
+                router.push('/auctions');
+              } else {
+                setStatusTab('ALL');
+              }
             }}
             className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl font-bold text-xs hover:bg-indigo-100 transition"
           >
@@ -256,7 +269,7 @@ function BrowseAuctionsContent() {
       ) : (
         <>
           {/* When showing ALL: render Live section first, then Ended */}
-          {statusTab === 'ALL' ? (
+          {statusTab === 'ALL' && !isClosingSoon ? (
             <>
               {/* Live Section */}
               {displayAuctions.filter(a => a.status === 'ACTIVE' && new Date(a.closingTime) > new Date()).length > 0 && (
