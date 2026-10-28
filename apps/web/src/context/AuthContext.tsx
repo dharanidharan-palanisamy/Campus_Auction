@@ -16,6 +16,7 @@ interface AuthContextType {
   token: string | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; message?: string }>;
+  register: (payload: { email: string; password: string; fullName: string; campusAlias: string; studentId: string }) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
   setUserDirectly: (user: User | null, token: string | null) => void;
 }
@@ -67,6 +68,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const register = async (payload: { email: string; password: string; fullName: string; campusAlias: string; studentId: string }) => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setUser(data.user);
+        setToken(data.token);
+        localStorage.setItem('campus_token', data.token);
+        localStorage.setItem('campus_user', JSON.stringify(data.user));
+        return { success: true };
+      }
+      return { success: false, message: data.message || 'Registration failed' };
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Network error' };
+    }
+  };
+
   const logout = () => {
     setUser(null);
     setToken(null);
@@ -87,7 +109,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, isLoading, login, logout, setUserDirectly }}>
+    <AuthContext.Provider value={{ user, token, isLoading, login, register, logout, setUserDirectly }}>
       {children}
     </AuthContext.Provider>
   );

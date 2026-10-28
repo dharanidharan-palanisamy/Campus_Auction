@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { Gavel, AlertCircle, ArrowRight } from 'lucide-react';
 
@@ -86,6 +87,13 @@ export default function LoginPage() {
 
         {/* Demo Fast Login Buttons */}
         <div className="pt-4 border-t border-slate-100">
+          <p className="text-xs text-slate-500 text-center mb-4">
+            New to campus auctions?{' '}
+            <Link href="/register" className="font-bold text-indigo-600 hover:underline">
+              Create an Account
+            </Link>
+          </p>
+
           <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-2 text-center">
             Demo 1-Click Credentials
           </span>

@@ -39,7 +39,7 @@ export function Navbar() {
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center gap-6">
             <Link href="/auctions" className="text-sm font-semibold text-slate-700 hover:text-indigo-600 transition">
-              Browse
+              Product
             </Link>
             <Link href="/auctions?closing_soon=true" className="text-sm font-semibold flex items-center gap-1.5 text-amber-600 hover:text-amber-700 transition">
               <Clock className="w-4 h-4" />
