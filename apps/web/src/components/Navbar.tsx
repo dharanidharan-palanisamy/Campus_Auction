@@ -60,13 +60,15 @@ export function Navbar() {
           {/* User Controls & Actions */}
           <div className="hidden md:flex items-center gap-3">
 
-            <Link
-              href="/dashboard/listings/new"
-              className="flex items-center gap-1.5 bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-sm hover:bg-indigo-700 transition"
-            >
-              <PlusCircle className="w-4 h-4" />
-              Create Listing
-            </Link>
+            {user?.role !== 'ADMIN' && (
+              <Link
+                href="/dashboard/listings/new"
+                className="flex items-center gap-1.5 bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-sm hover:bg-indigo-700 transition"
+              >
+                <PlusCircle className="w-4 h-4" />
+                Create Listing
+              </Link>
+            )}
 
             {user ? (
               <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
@@ -129,9 +131,11 @@ export function Navbar() {
           <Link href="/assistant" className="block py-2 text-base font-semibold text-indigo-600">
             AI Assistant
           </Link>
-          <Link href="/dashboard/listings/new" className="block py-2 text-base font-semibold text-indigo-600">
-            + Create Listing
-          </Link>
+          {user?.role !== 'ADMIN' && (
+            <Link href="/dashboard/listings/new" className="block py-2 text-base font-semibold text-indigo-600">
+              + Create Listing
+            </Link>
+          )}
           {!user && (
             <>
               <Link href="/register" className="block py-2 text-base font-semibold text-indigo-600">
