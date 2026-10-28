@@ -46,7 +46,8 @@ export default function HomePage() {
     loadData();
   }, []);
 
-  const closingSoonAuctions = [...auctions]
+  const closingSoonAuctions = auctions
+    .filter((a) => new Date(a.closingTime).getTime() > Date.now())
     .sort((a, b) => new Date(a.closingTime).getTime() - new Date(b.closingTime).getTime())
     .slice(0, 4);
 

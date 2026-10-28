@@ -25,10 +25,18 @@ auctionRouter.get('/', async (req, res) => {
     const take = Math.min(50, Math.max(1, parseInt(limit as string, 10) || 12));
     const skip = (pageNum - 1) * take;
 
+    const now = new Date();
     const where: any = {};
 
     if (status && status !== 'ALL') {
       where.status = status;
+      // When searching for ACTIVE auctions or closing soon, ensure deadline hasn't elapsed
+      if (status === 'ACTIVE' || sort === 'closing_soon') {
+        where.closingTime = { gt: now };
+      }
+    } else if (sort === 'closing_soon') {
+      where.status = 'ACTIVE';
+      where.closingTime = { gt: now };
     }
 
     if (category) {
