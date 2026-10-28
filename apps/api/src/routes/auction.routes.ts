@@ -29,15 +29,25 @@ auctionRouter.get('/', async (req, res) => {
     const where: any = {};
 
     if (status && status !== 'ALL') {
-      where.status = status;
-      // When searching for ACTIVE auctions or closing soon, ensure deadline hasn't elapsed
-      if (status === 'ACTIVE' || sort === 'closing_soon') {
+      if (status === 'ACTIVE') {
+        // Active = status ACTIVE + closing time in the future
+        where.status = 'ACTIVE';
         where.closingTime = { gt: now };
+      } else if (status === 'ENDED') {
+        // Ended = COMPLETED or UNSOLD or CANCELLED
+        where.status = { in: ['COMPLETED', 'UNSOLD', 'CANCELLED', 'REJECTED'] };
+      } else {
+        where.status = status;
+        if (sort === 'closing_soon') {
+          where.closingTime = { gt: now };
+        }
       }
     } else if (sort === 'closing_soon') {
+      // closing_soon sort implies only active auctions
       where.status = 'ACTIVE';
       where.closingTime = { gt: now };
     }
+    // status === 'ALL' or no status: no filter → return everything
 
     if (category) {
       where.category = { slug: category as string };
@@ -69,6 +79,8 @@ auctionRouter.get('/', async (req, res) => {
     if (sort === 'newest') orderBy = { createdAt: 'desc' };
     if (sort === 'price_low') orderBy = { currentLeadingBidInCents: 'asc' };
     if (sort === 'price_high') orderBy = { currentLeadingBidInCents: 'desc' };
+    // For 'all' status view, default to newest
+    if (!status || status === 'ALL') orderBy = { createdAt: 'desc' };
 
     const [total, auctions] = await Promise.all([
       prisma.auctionListing.count({ where }),
