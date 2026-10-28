@@ -1,0 +1,228 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id               String          @id @default(uuid())
+  email            String          @unique
+  passwordHash     String
+  fullName         String
+  campusAlias      String
+  studentId        String          @unique
+  role             String          @default("STUDENT") // STUDENT or ADMIN
+  isEmailVerified  Boolean         @default(true)
+  isSuspended      Boolean         @default(false)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  listings         AuctionListing[] @relation("UserListings")
+  bids             Bid[]
+  autoBidLimits    AutoBidLimit[]
+  questions        Question[]      @relation("UserQuestions")
+  answers          QuestionAnswer[] @relation("UserAnswers")
+  savedListings    SavedListing[]
+  savedSearches    SavedSearch[]
+  notifications    Notification[]
+  auditLogs        AuditLog[]
+  outcomesWon      AuctionOutcome[]
+}
+
+model Category {
+  id          String           @id @default(uuid())
+  name        String           @unique
+  slug        String           @unique
+  description String?
+  icon        String?
+  listings    AuctionListing[]
+}
+
+model AuctionListing {
+  id                       String          @id @default(uuid())
+  sellerId                 String
+  categoryId               String
+  title                    String
+  description              String
+  condition                String          @default("GOOD") // NEW, LIKE_NEW, GOOD, FAIR, POOR
+  startingPriceInCents     Int
+  minIncrementInCents      Int
+  currentLeadingBidInCents Int             @default(0)
+  leadingBidId             String?
+  status                   String          @default("ACTIVE") // DRAFT, ACTIVE, PENDING_SELLER_DECISION, RESERVED, COMPLETED, UNSOLD, REJECTED, CANCELLED, PICKUP_FAILED
+  startTime                DateTime        @default(now())
+  closingTime              DateTime
+  pickupLocation           String
+  sellerNotes              String?
+  version                  Int             @default(1)
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+
+  seller                   User            @relation("UserListings", fields: [sellerId], references: [id])
+  category                 Category        @relation(fields: [categoryId], references: [id])
+  images                   ListingImage[]
+  bids                     Bid[]
+  autoBidLimits            AutoBidLimit[]
+  questions                Question[]
+  outcome                  AuctionOutcome?
+  handover                 HandoverRecord?
+  events                   AuctionEvent[]
+
+  @@index([status, closingTime])
+  @@index([categoryId])
+  @@index([sellerId])
+}
+
+model ListingImage {
+  id           String         @id @default(uuid())
+  listingId    String
+  url          String
+  displayOrder Int            @default(0)
+  createdAt    DateTime       @default(now())
+
+  listing      AuctionListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+}
+
+model Bid {
+  id              String         @id @default(uuid())
+  listingId       String
+  bidderId        String
+  amountInCents   Int
+  bidType         String         @default("MANUAL") // MANUAL, AUTO_PROXY, AI_CONFIRMED
+  idempotencyKey  String?        @unique
+  acceptedAt      DateTime       @default(now())
+
+  listing         AuctionListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  bidder          User           @relation(fields: [bidderId], references: [id])
+
+  @@index([listingId, amountInCents])
+  @@index([bidderId])
+}
+
+model AutoBidLimit {
+  id              String         @id @default(uuid())
+  listingId       String
+  bidderId        String
+  maxLimitInCents Int
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  listing         AuctionListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  bidder          User           @relation(fields: [bidderId], references: [id])
+
+  @@unique([listingId, bidderId])
+}
+
+model AuctionOutcome {
+  id                 String         @id @default(uuid())
+  listingId          String         @unique
+  winnerId           String?
+  finalAmountInCents Int
+  sellerDecision     String         @default("PENDING") // PENDING, APPROVED, REJECTED, TIMED_OUT
+  rejectionReason    String?
+  decidedAt          DateTime?
+  createdAt          DateTime       @default(now())
+
+  listing            AuctionListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  winner             User?          @relation(fields: [winnerId], references: [id])
+}
+
+model HandoverRecord {
+  id             String         @id @default(uuid())
+  listingId      String         @unique
+  handoverStatus String         @default("PENDING") // PENDING, COMPLETED, DISPUTED, FAILED
+  pickupNotes    String?
+  completedAt    DateTime?
+  createdAt      DateTime       @default(now())
+
+  listing        AuctionListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+}
+
+model Question {
+  id          String           @id @default(uuid())
+  listingId   String
+  askerId     String
+  content     String
+  isModerated Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+
+  listing     AuctionListing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  asker       User             @relation("UserQuestions", fields: [askerId], references: [id])
+  answers     QuestionAnswer[]
+}
+
+model QuestionAnswer {
+  id         String   @id @default(uuid())
+  questionId String
+  sellerId   String
+  content    String
+  createdAt  DateTime @default(now())
+
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  seller     User     @relation("UserAnswers", fields: [sellerId], references: [id])
+}
+
+model SavedListing {
+  id        String   @id @default(uuid())
+  userId    String
+  listingId String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, listingId])
+}
+
+model SavedSearch {
+  id               String   @id @default(uuid())
+  userId           String
+  query            String?
+  categoryId       String?
+  minPriceInCents  Int?
+  maxPriceInCents  Int?
+  condition        String?
+  createdAt        DateTime @default(now())
+
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String   // OUTBID, BID_ACCEPTED, CLOSING_SOON, PROVISIONAL_WIN, SELLER_DECISION, HANDOVER_UPDATE, SAVED_SEARCH_MATCH, QUESTION_RECEIVED
+  title     String
+  message   String
+  metadata  String?  // JSON string
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+}
+
+model AuctionEvent {
+  id        String         @id @default(uuid())
+  listingId String
+  eventType String
+  payload   String         // JSON string
+  createdAt DateTime       @default(now())
+
+  listing   AuctionListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  action     String
+  targetType String
+  targetId   String?
+  payload    String?  // JSON string
+  createdAt  DateTime @default(now())
+
+  actor      User?    @relation(fields: [actorId], references: [id])
+}
