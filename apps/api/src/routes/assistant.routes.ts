@@ -66,36 +66,94 @@ assistantRouter.post('/chat', authenticateToken, async (req: AuthRequest, res) =
       });
     }
 
-    // Intent: Find / Search items
-    if (lower.includes('find') || lower.includes('show') || lower.includes('search') || lower.includes('bicycle') || lower.includes('calculator') || lower.includes('book') || lower.includes('keyboard')) {
-      const keywords = ['bicycle', 'calculator', 'book', 'keyboard', 'laptop', 'lamp', 'cycle'];
-      let term = '';
-      for (const kw of keywords) {
-        if (lower.includes(kw)) {
-          term = kw;
-          break;
+    // Intent: Find / Search items with budget and category awareness
+    const isSearchIntent = lower.includes('find') || 
+                           lower.includes('show') || 
+                           lower.includes('search') || 
+                           lower.includes('get') ||
+                           lower.includes('bicycle') || 
+                           lower.includes('bike') || 
+                           lower.includes('cycle') || 
+                           lower.includes('calculator') || 
+                           lower.includes('book') || 
+                           lower.includes('keyboard') ||
+                           lower.includes('laptop') ||
+                           lower.includes('under') ||
+                           lower.includes('below');
+
+    if (isSearchIntent) {
+      // Extract price budget (e.g. "under ₹2,000", "below 3000", "under 1500")
+      const priceMatch = lower.match(/(?:under|below|less than|max)\s*(?:₹|rs\.?)?\s*([0-9,]+)/i);
+      let maxBudgetInCents: number | null = null;
+      if (priceMatch) {
+        const cleanPrice = parseInt(priceMatch[1].replace(/,/g, ''), 10);
+        if (!isNaN(cleanPrice)) {
+          maxBudgetInCents = cleanPrice * 100;
         }
       }
 
-      const listings = await prisma.auctionListing.findMany({
-        where: {
-          status: 'ACTIVE',
-          ...(term ? { OR: [{ title: { contains: term } }, { description: { contains: term } }] } : {})
-        },
-        take: 3,
+      // Keyword terms
+      const searchTerms: string[] = [];
+      if (lower.includes('bicycle') || lower.includes('bike') || lower.includes('cycle')) searchTerms.push('bike', 'bicycle');
+      if (lower.includes('calculator') || lower.includes('casio')) searchTerms.push('calculator', 'casio');
+      if (lower.includes('book') || lower.includes('algorithm') || lower.includes('clrs')) searchTerms.push('book', 'algorithm');
+      if (lower.includes('keyboard') || lower.includes('rgb')) searchTerms.push('keyboard');
+      if (lower.includes('drafter')) searchTerms.push('drafter');
+
+      const allActive = await prisma.auctionListing.findMany({
+        where: { status: 'ACTIVE' },
         include: { category: true }
       });
 
-      if (listings.length === 0) {
+      // Filter matches by term and budget
+      const matches = allActive.filter((listing) => {
+        const currentPrice = listing.currentLeadingBidInCents > 0 
+          ? listing.currentLeadingBidInCents 
+          : listing.startingPriceInCents;
+
+        // Check budget if requested
+        if (maxBudgetInCents !== null && currentPrice > maxBudgetInCents) {
+          return false;
+        }
+
+        // Check keyword matches if any were identified
+        if (searchTerms.length > 0) {
+          const content = `${listing.title} ${listing.description} ${listing.category.name}`.toLowerCase();
+          return searchTerms.some((st) => content.includes(st));
+        }
+
+        return true;
+      });
+
+      if (matches.length === 0) {
+        // If no items matched strictly within budget, check if items exist above budget to give a helpful suggestion
+        const availableItems = allActive.filter((l) => {
+          if (searchTerms.length > 0) {
+            const content = `${l.title} ${l.description} ${l.category.name}`.toLowerCase();
+            return searchTerms.some((st) => content.includes(st));
+          }
+          return false;
+        });
+
+        if (availableItems.length > 0 && maxBudgetInCents !== null) {
+          const item = availableItems[0];
+          const curr = item.currentLeadingBidInCents > 0 ? item.currentLeadingBidInCents : item.startingPriceInCents;
+          return res.json({
+            success: true,
+            reply: `I found **${item.title}** (${item.category.name}), but its current leading bid is **₹${(curr / 100).toFixed(0)}**, which exceeds your budget of ₹${(maxBudgetInCents / 100).toFixed(0)}. Would you like me to prepare a bid proposal for ₹${(curr / 100).toFixed(0)}, or notify you when a cheaper listing appears?`
+          });
+        }
+
         return res.json({
           success: true,
           reply: "I couldn't find any active listings matching your query right now. Would you like to save this as a saved search to get notified when someone lists it?"
         });
       }
 
-      const summaries = listings.map(l =>
-        `- **${l.title}** (${l.category.name}): Current bid ₹${((l.currentLeadingBidInCents || l.startingPriceInCents) / 100).toFixed(2)}, Condition: ${l.condition}`
-      ).join('\n');
+      const summaries = matches.map((l) => {
+        const price = l.currentLeadingBidInCents > 0 ? l.currentLeadingBidInCents : l.startingPriceInCents;
+        return `- **${l.title}** (${l.category.name}): Current price **₹${(price / 100).toFixed(0)}**, Condition: ${l.condition}`;
+      }).join('\n');
 
       return res.json({
         success: true,
