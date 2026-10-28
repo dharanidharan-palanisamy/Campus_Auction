@@ -46,10 +46,15 @@ auctionRouter.get('/', async (req, res) => {
     }
 
     if (q) {
-      where.OR = [
-        { title: { contains: q as string } },
-        { description: { contains: q as string } }
-      ];
+      const searchTerms = (q as string).trim().split(/\s+/).filter(Boolean);
+      where.AND = searchTerms.map((term) => ({
+        OR: [
+          { title: { contains: term } },
+          { description: { contains: term } },
+          { category: { name: { contains: term } } },
+          { category: { slug: { contains: term } } },
+        ],
+      }));
     }
 
     let orderBy: any = { closingTime: 'asc' };
