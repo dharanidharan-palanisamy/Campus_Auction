@@ -98,53 +98,53 @@ export function AuctionCard({ auction }: AuctionCardProps) {
           </div>
         )}
 
-        {/* Top badges */}
-        <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
-          {auction.category && (
-            <span className="bg-white/95 backdrop-blur-sm text-slate-800 text-xs font-semibold px-2.5 py-1 rounded-full shadow-sm">
+        {/* Top bar: Category on left, Status on right (isolated, never overlaps) */}
+        <div className="absolute top-3 inset-x-3 flex items-center justify-between gap-2 z-10 pointer-events-none">
+          {auction.category ? (
+            <span className="bg-white/95 backdrop-blur-sm text-slate-800 text-xs font-semibold px-2.5 py-1 rounded-full shadow-sm truncate max-w-[150px]">
               {auction.category.name}
             </span>
-          )}
-          <span className="bg-slate-900/75 backdrop-blur-sm text-white text-xs font-medium px-2 py-1 rounded-full">
-            {auction.condition}
+          ) : <div />}
+
+          <div className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border backdrop-blur-md shadow-sm ${statusMeta.badgeBg} ${statusMeta.textColor}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${statusMeta.color} ${statusMeta.isLive ? 'animate-pulse' : ''}`} />
+            {statusMeta.label}
+          </div>
+        </div>
+
+        {/* Bottom bar: Condition on left, Countdown on right */}
+        <div className="absolute bottom-3 inset-x-3 flex items-center justify-between gap-2 z-10 pointer-events-none">
+          <span className="bg-slate-900/80 backdrop-blur-md text-white text-[11px] font-semibold px-2.5 py-1 rounded-full shadow-sm">
+            {auction.condition?.replace('_', ' ')}
           </span>
+
+          {/* Countdown / Closed Badge */}
+          {statusMeta.isLive ? (
+            <div className={`shrink-0 flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold backdrop-blur-md shadow-md ${
+              timeLeft.isExpired
+                ? 'bg-slate-900/90 text-slate-300'
+                : timeLeft.isUrgent
+                ? 'bg-rose-600 text-white animate-pulse'
+                : 'bg-white/90 text-slate-900'
+            }`}>
+              <Clock className="w-3.5 h-3.5" />
+              {timeLeft.isExpired ? (
+                'Ended'
+              ) : (
+                <span>
+                  {timeLeft.days > 0 && `${timeLeft.days}d `}
+                  {String(timeLeft.hours).padStart(2, '0')}:
+                  {String(timeLeft.minutes).padStart(2, '0')}:
+                  {String(timeLeft.seconds).padStart(2, '0')}
+                </span>
+              )}
+            </div>
+          ) : (
+            <div className="shrink-0 bg-slate-900/80 backdrop-blur-md text-white text-xs font-medium px-2.5 py-1 rounded-full">
+              Closed {new Date(auction.closingTime).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+            </div>
+          )}
         </div>
-
-        {/* Status badge top-right */}
-        <div className={`absolute top-3 right-3 flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-bold border ${statusMeta.badgeBg} ${statusMeta.textColor}`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${statusMeta.color} ${statusMeta.isLive ? 'animate-pulse' : ''}`} />
-          {statusMeta.label}
-        </div>
-
-        {/* Countdown (live only) */}
-        {statusMeta.isLive && (
-          <div className={`absolute bottom-3 right-3 flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold backdrop-blur-md shadow-md ${
-            timeLeft.isExpired
-              ? 'bg-slate-900/90 text-slate-300'
-              : timeLeft.isUrgent
-              ? 'bg-rose-600 text-white animate-pulse'
-              : 'bg-white/90 text-slate-900'
-          }`}>
-            <Clock className="w-3.5 h-3.5" />
-            {timeLeft.isExpired ? (
-              'Ended'
-            ) : (
-              <span>
-                {timeLeft.days > 0 && `${timeLeft.days}d `}
-                {String(timeLeft.hours).padStart(2, '0')}:
-                {String(timeLeft.minutes).padStart(2, '0')}:
-                {String(timeLeft.seconds).padStart(2, '0')}
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* Ended: show closed date */}
-        {isEnded && (
-          <div className="absolute bottom-3 right-3 bg-slate-900/80 backdrop-blur-md text-white text-xs font-medium px-2.5 py-1 rounded-full">
-            Closed {new Date(auction.closingTime).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-          </div>
-        )}
       </div>
 
       {/* Card Body */}
