@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { io, Socket } from 'socket.io-client';
 import confetti from 'canvas-confetti';
@@ -15,7 +15,13 @@ import {
   CheckCircle2, 
   User as UserIcon, 
   MessageSquare, 
-  Send 
+  Send,
+  Pencil,
+  Trash2,
+  X,
+  AlertTriangle,
+  Loader2,
+  Package
 } from 'lucide-react';
 
 import { Suspense } from 'react';
@@ -30,6 +36,7 @@ export default function AuctionDetailPage() {
 
 function AuctionDetailContent() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const { user } = useAuth();
 
   const [auction, setAuction] = useState<any>(null);
@@ -45,10 +52,26 @@ function AuctionDetailContent() {
 
   // Q&A form
   const [newQuestion, setNewQuestion] = useState('');
-  const [sellerAnswer, setSellerAnswer] = useState<{ [qId: string]: string }>({});
 
   // Countdown
   const [timeLeft, setTimeLeft] = useState({ totalMs: 0, days: 0, hours: 0, minutes: 0, seconds: 0, isUrgent: false, isExpired: false });
+
+  // Seller Edit Modal State
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [editTitle, setEditTitle] = useState('');
+  const [editCategoryId, setEditCategoryId] = useState('');
+  const [editCondition, setEditCondition] = useState('GOOD');
+  const [editDescription, setEditDescription] = useState('');
+  const [editStartingPrice, setEditStartingPrice] = useState('');
+  const [editMinIncrement, setEditMinIncrement] = useState('');
+  const [editPickupLocation, setEditPickupLocation] = useState('');
+  const [editSellerNotes, setEditSellerNotes] = useState('');
+  const [editImageUrl, setEditImageUrl] = useState('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [modalError, setModalError] = useState('');
 
   // Fetch initial details
   const fetchAuction = async () => {
@@ -71,6 +94,16 @@ function AuctionDetailContent() {
   useEffect(() => {
     fetchAuction();
   }, [id]);
+
+  // Fetch categories for edit form
+  useEffect(() => {
+    fetch('http://localhost:4000/api/v1/auctions/categories')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) setCategories(data.data);
+      })
+      .catch(console.error);
+  }, []);
 
   // Live timer interval
   useEffect(() => {
@@ -129,7 +162,125 @@ function AuctionDetailContent() {
     ? auction.currentLeadingBidInCents + auction.minIncrementInCents
     : auction.startingPriceInCents;
 
-  const isSeller = user?.id === auction.sellerId;
+  const isSeller = Boolean(user && (user.id === auction.sellerId || user.role === 'ADMIN'));
+  const hasBids = bids.length > 0;
+
+  // Open Edit Modal with current listing values
+  const openEditModal = () => {
+    setModalError('');
+    setEditTitle(auction.title || '');
+    setEditCategoryId(auction.categoryId || (categories[0]?.id ?? ''));
+    setEditCondition(auction.condition || 'GOOD');
+    setEditDescription(auction.description || '');
+    setEditStartingPrice((auction.startingPriceInCents / 100).toString());
+    setEditMinIncrement((auction.minIncrementInCents / 100).toString());
+    setEditPickupLocation(auction.pickupLocation || '');
+    setEditSellerNotes(auction.sellerNotes || '');
+    setEditImageUrl(auction.images?.[0]?.url || '');
+    setIsEditModalOpen(true);
+  };
+
+  // Submit Edit Listing
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setModalError('');
+
+    if (editTitle.trim().length < 3) {
+      setModalError('Title must be at least 3 characters.');
+      return;
+    }
+    if (editDescription.trim().length < 10) {
+      setModalError('Description must be at least 10 characters.');
+      return;
+    }
+    if (!editPickupLocation.trim()) {
+      setModalError('Campus pickup location is required.');
+      return;
+    }
+
+    setIsSavingEdit(true);
+
+    try {
+      const payload: any = {
+        title: editTitle.trim(),
+        categoryId: editCategoryId,
+        condition: editCondition,
+        description: editDescription.trim(),
+        pickupLocation: editPickupLocation.trim(),
+        sellerNotes: editSellerNotes.trim() || null,
+        imageUrls: editImageUrl.trim() ? [editImageUrl.trim()] : undefined,
+      };
+
+      // Only update starting price if no bids have been placed
+      if (!hasBids) {
+        const parsedStart = parseFloat(editStartingPrice);
+        const parsedInc = parseFloat(editMinIncrement);
+        if (isNaN(parsedStart) || parsedStart <= 0) {
+          setModalError('Starting price must be greater than zero.');
+          setIsSavingEdit(false);
+          return;
+        }
+        if (isNaN(parsedInc) || parsedInc <= 0) {
+          setModalError('Minimum increment must be positive.');
+          setIsSavingEdit(false);
+          return;
+        }
+        payload.startingPriceInCents = Math.round(parsedStart * 100);
+        payload.minIncrementInCents = Math.round(parsedInc * 100);
+      }
+
+      const res = await fetch(`http://localhost:4000/api/v1/auctions/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('campus_token') || ''}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setModalError(data.message || 'Failed to update listing.');
+      } else {
+        setAuction(data.data);
+        setSuccessMsg('Product details updated successfully!');
+        setIsEditModalOpen(false);
+      }
+    } catch (err: any) {
+      setModalError(err.message || 'Network error while updating.');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  // Submit Delete Listing
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    setErrorMsg('');
+
+    try {
+      const res = await fetch(`http://localhost:4000/api/v1/auctions/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('campus_token') || ''}`,
+        },
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setErrorMsg(data.message || 'Failed to delete listing.');
+        setIsDeleteModalOpen(false);
+      } else {
+        // Redirect to dashboard or auctions browse
+        router.push('/dashboard');
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Network error while deleting.');
+      setIsDeleteModalOpen(false);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   // Handle Bid Placement
   const handlePlaceBid = async (amountInCents: number) => {
@@ -202,15 +353,25 @@ function AuctionDetailContent() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
       {/* Messages */}
       {errorMsg && (
-        <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-sm flex items-center gap-2">
-          <AlertCircle className="w-5 h-5 shrink-0 text-rose-600" />
-          <span>{errorMsg}</span>
+        <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-sm flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 shrink-0 text-rose-600" />
+            <span>{errorMsg}</span>
+          </div>
+          <button onClick={() => setErrorMsg('')} className="text-rose-500 hover:text-rose-700">
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
       {successMsg && (
-        <div className="mb-6 p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm flex items-center gap-2">
-          <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600" />
-          <span>{successMsg}</span>
+        <div className="mb-6 p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600" />
+            <span>{successMsg}</span>
+          </div>
+          <button onClick={() => setSuccessMsg('')} className="text-emerald-500 hover:text-emerald-700">
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
@@ -218,28 +379,56 @@ function AuctionDetailContent() {
         {/* Left Column: Photos & Details (7 cols) */}
         <div className="lg:col-span-7 space-y-8">
           {/* Main Image */}
-          <div className="rounded-3xl overflow-hidden bg-slate-100 border border-slate-200 aspect-[4/3]">
+          <div className="rounded-3xl overflow-hidden bg-slate-100 border border-slate-200 aspect-[4/3] relative">
             <img
               src={auction.images?.[0]?.url || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=1000&q=80'}
               alt={auction.title}
               className="w-full h-full object-cover"
             />
+            {isSeller && (
+              <div className="absolute top-4 right-4 bg-slate-900/80 backdrop-blur-md text-white text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-lg">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                Seller Workspace
+              </div>
+            )}
           </div>
 
           {/* Description & Condition */}
           <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <span className="bg-indigo-50 text-indigo-700 text-xs font-bold px-3 py-1 rounded-full">
-                  {auction.category?.name}
-                </span>
-                <span className="bg-slate-100 text-slate-800 text-xs font-semibold px-3 py-1 rounded-full">
-                  Condition: {auction.condition}
-                </span>
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="bg-indigo-50 text-indigo-700 text-xs font-bold px-3 py-1 rounded-full">
+                    {auction.category?.name}
+                  </span>
+                  <span className="bg-slate-100 text-slate-800 text-xs font-semibold px-3 py-1 rounded-full">
+                    Condition: {auction.condition}
+                  </span>
+                </div>
+                <h1 className="text-2xl sm:text-3xl font-black text-slate-900 leading-tight">
+                  {auction.title}
+                </h1>
               </div>
-              <h1 className="text-2xl sm:text-3xl font-black text-slate-900 leading-tight">
-                {auction.title}
-              </h1>
+
+              {/* Quick Seller Actions Header */}
+              {isSeller && (
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={openEditModal}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition shadow-sm"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                    Edit Details
+                  </button>
+                  <button
+                    onClick={() => setIsDeleteModalOpen(true)}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition shadow-sm"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Delete
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="prose prose-slate max-w-none text-slate-600 text-sm leading-relaxed whitespace-pre-line">
@@ -379,12 +568,55 @@ function AuctionDetailContent() {
               </div>
             </div>
 
-            {/* Bidding Controls */}
+            {/* Bidding Controls / Seller Action Panel */}
             {!timeLeft.isExpired && auction.status === 'ACTIVE' && (
               <div className="space-y-4">
                 {isSeller ? (
-                  <div className="p-3 bg-slate-50 rounded-xl text-center text-xs font-semibold text-slate-500 border border-slate-200">
-                    You are the seller of this listing. Self-bidding is prevented.
+                  /* Seller Management Card */
+                  <div className="p-5 bg-gradient-to-br from-slate-50 to-indigo-50/30 rounded-2xl border border-indigo-100 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                        <Package className="w-4 h-4 text-indigo-600" />
+                        Seller Management
+                      </span>
+                      <span className="text-[11px] font-bold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full">
+                        Your Listing
+                      </span>
+                    </div>
+
+                    <div className="p-3 bg-white rounded-xl border border-slate-200 text-xs text-slate-600 leading-relaxed">
+                      {!hasBids ? (
+                        <p className="text-emerald-700 font-medium">
+                          ✓ No bids placed yet. You can update any detail (including starting price) or delete this listing freely.
+                        </p>
+                      ) : (
+                        <p className="text-amber-700 font-medium">
+                          ⚠️ {bids.length} active bid(s) received. Starting price is locked, but you can still update product details, pickup location, or cancel the listing.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <button
+                        onClick={openEditModal}
+                        className="py-2.5 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm transition flex items-center justify-center gap-1.5"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                        Edit Details
+                      </button>
+
+                      <button
+                        onClick={() => setIsDeleteModalOpen(true)}
+                        className="py-2.5 px-3 rounded-xl bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 font-bold text-xs transition flex items-center justify-center gap-1.5"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Delete Listing
+                      </button>
+                    </div>
+
+                    <p className="text-[11px] text-center text-slate-400">
+                      Self-bidding is prevented to ensure marketplace fairness.
+                    </p>
                   </div>
                 ) : (
                   <>
@@ -456,6 +688,238 @@ function AuctionDetailContent() {
           </div>
         </div>
       </div>
+
+      {/* ===================== EDIT PRODUCT MODAL ===================== */}
+      {isEditModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl p-6 sm:p-8 my-8 space-y-5">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <div>
+                <h3 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                  <Pencil className="w-5 h-5 text-indigo-600" />
+                  Edit Product Details
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Update your campus listing information
+                </p>
+              </div>
+              <button
+                onClick={() => setIsEditModalOpen(false)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {modalError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                <span>{modalError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveEdit} className="space-y-4 text-xs">
+              {/* Title */}
+              <div>
+                <label className="block font-bold uppercase tracking-wider text-slate-500 mb-1">
+                  Item Title
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="w-full px-4 py-2.5 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              {/* Category & Condition */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Category
+                  </label>
+                  <select
+                    value={editCategoryId}
+                    onChange={(e) => setEditCategoryId(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-semibold"
+                  >
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Condition
+                  </label>
+                  <select
+                    value={editCondition}
+                    onChange={(e) => setEditCondition(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-semibold"
+                  >
+                    <option value="NEW">New</option>
+                    <option value="LIKE_NEW">Like New</option>
+                    <option value="GOOD">Good</option>
+                    <option value="FAIR">Fair</option>
+                    <option value="POOR">Poor</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block font-bold uppercase tracking-wider text-slate-500 mb-1">
+                  Description
+                </label>
+                <textarea
+                  required
+                  rows={4}
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  className="w-full px-4 py-2.5 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              {/* Starting Price & Increment (Locked if bids exist) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Starting Price (₹) {hasBids && <span className="text-amber-600 font-semibold">(Locked - Bids exist)</span>}
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    disabled={hasBids}
+                    value={editStartingPrice}
+                    onChange={(e) => setEditStartingPrice(e.target.value)}
+                    className="w-full px-4 py-2.5 text-sm bg-slate-50 disabled:bg-slate-100 disabled:text-slate-400 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Min Increment (₹) {hasBids && <span className="text-amber-600 font-semibold">(Locked)</span>}
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    disabled={hasBids}
+                    value={editMinIncrement}
+                    onChange={(e) => setEditMinIncrement(e.target.value)}
+                    className="w-full px-4 py-2.5 text-sm bg-slate-50 disabled:bg-slate-100 disabled:text-slate-400 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              {/* Pickup Location */}
+              <div>
+                <label className="block font-bold uppercase tracking-wider text-slate-500 mb-1">
+                  Campus Handover Location
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editPickupLocation}
+                  onChange={(e) => setEditPickupLocation(e.target.value)}
+                  className="w-full px-4 py-2.5 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              {/* Photo URL */}
+              <div>
+                <label className="block font-bold uppercase tracking-wider text-slate-500 mb-1">
+                  Product Image URL
+                </label>
+                <input
+                  type="url"
+                  value={editImageUrl}
+                  onChange={(e) => setEditImageUrl(e.target.value)}
+                  className="w-full px-4 py-2.5 text-xs font-mono bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="px-5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-600 hover:bg-slate-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingEdit}
+                  className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-md transition flex items-center gap-2"
+                >
+                  {isSavingEdit && <Loader2 className="w-4 h-4 animate-spin" />}
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ===================== DELETE CONFIRMATION MODAL ===================== */}
+      {isDeleteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full border border-slate-200 shadow-2xl p-6 sm:p-7 space-y-5">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-2">
+              <h3 className="text-xl font-black text-slate-900">
+                Delete Listing?
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Are you sure you want to delete <strong className="text-slate-800">"{auction.title}"</strong>? 
+                {hasBids ? (
+                  <span className="block mt-1 text-amber-600 font-semibold">
+                    Warning: This listing has {bids.length} placed bid(s). Deleting will remove all bids and notify participating bidders.
+                  </span>
+                ) : (
+                  <span className="block mt-1">
+                    This action cannot be undone. All listing details will be permanently removed.
+                  </span>
+                )}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsDeleteModalOpen(false)}
+                disabled={isDeleting}
+                className="py-2.5 px-4 rounded-xl border border-slate-200 font-bold text-xs text-slate-700 hover:bg-slate-50 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md shadow-rose-200 transition flex items-center justify-center gap-1.5"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Confirm Delete
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

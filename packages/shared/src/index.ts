@@ -74,6 +74,19 @@ export const createListingSchema = z.object({
   imageUrls: z.array(z.string().url()).min(1, 'At least one image is required')
 });
 
+export const updateListingSchema = z.object({
+  title: z.string().min(3).max(100).optional(),
+  categoryId: z.string().uuid().optional(),
+  description: z.string().min(10).max(2000).optional(),
+  condition: z.nativeEnum(ItemCondition).optional(),
+  startingPriceInCents: z.number().int().positive().optional(),
+  minIncrementInCents: z.number().int().positive().optional(),
+  closingTime: z.string().datetime().optional(),
+  pickupLocation: z.string().min(3).optional(),
+  sellerNotes: z.string().max(500).optional().nullable(),
+  imageUrls: z.array(z.string().url()).min(1).optional()
+});
+
 export const placeBidSchema = z.object({
   amountInCents: z.number().int().positive(),
   idempotencyKey: z.string().uuid()

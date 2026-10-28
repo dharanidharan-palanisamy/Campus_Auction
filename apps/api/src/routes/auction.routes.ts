@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../lib/prisma';
 import { authenticateToken, AuthRequest, requireAdmin } from '../middlewares/auth';
 import { BiddingService } from '../services/bidding.service';
-import { createListingSchema, placeBidSchema, sellerDecisionSchema, handoverRecordSchema, questionSchema, answerSchema } from '@campus/shared';
+import { createListingSchema, updateListingSchema, placeBidSchema, sellerDecisionSchema, handoverRecordSchema, questionSchema, answerSchema } from '@campus/shared';
 
 export const auctionRouter = Router();
 
@@ -207,6 +207,120 @@ auctionRouter.post('/', authenticateToken, async (req: AuthRequest, res) => {
   }
 });
 
+// 4.1 Update Listing (Seller or Admin)
+const updateListingHandler = async (req: AuthRequest, res: any) => {
+  try {
+    const listingId = req.params.id;
+    const listing = await prisma.auctionListing.findUnique({
+      where: { id: listingId },
+      include: { bids: { select: { id: true } } }
+    });
+
+    if (!listing) {
+      return res.status(404).json({ success: false, message: 'Listing not found' });
+    }
+
+    if (listing.sellerId !== req.user!.id && req.user!.role !== 'ADMIN') {
+      return res.status(403).json({ success: false, message: 'Only the seller or admin can update this listing' });
+    }
+
+    const validated = updateListingSchema.parse(req.body);
+
+    const hasBids = listing.bids.length > 0;
+    if (hasBids && (validated.startingPriceInCents !== undefined || validated.minIncrementInCents !== undefined)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Starting price and increment cannot be modified once bids have been placed.'
+      });
+    }
+
+    const updateData: any = {};
+    if (validated.title !== undefined) updateData.title = validated.title;
+    if (validated.description !== undefined) updateData.description = validated.description;
+    if (validated.categoryId !== undefined) updateData.categoryId = validated.categoryId;
+    if (validated.condition !== undefined) updateData.condition = validated.condition;
+    if (validated.pickupLocation !== undefined) updateData.pickupLocation = validated.pickupLocation;
+    if (validated.sellerNotes !== undefined) updateData.sellerNotes = validated.sellerNotes;
+    if (validated.closingTime !== undefined) updateData.closingTime = new Date(validated.closingTime);
+    if (!hasBids) {
+      if (validated.startingPriceInCents !== undefined) updateData.startingPriceInCents = validated.startingPriceInCents;
+      if (validated.minIncrementInCents !== undefined) updateData.minIncrementInCents = validated.minIncrementInCents;
+    }
+
+    if (validated.imageUrls && validated.imageUrls.length > 0) {
+      await prisma.listingImage.deleteMany({ where: { listingId } });
+      await prisma.listingImage.createMany({
+        data: validated.imageUrls.map((url, index) => ({
+          listingId,
+          url,
+          displayOrder: index
+        }))
+      });
+    }
+
+    const updated = await prisma.auctionListing.update({
+      where: { id: listingId },
+      data: updateData,
+      include: {
+        images: { orderBy: { displayOrder: 'asc' } },
+        category: true,
+        seller: { select: { id: true, campusAlias: true, email: true, createdAt: true } },
+        bids: {
+          orderBy: { acceptedAt: 'desc' },
+          include: { bidder: { select: { id: true, campusAlias: true } } }
+        },
+        questions: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            asker: { select: { campusAlias: true } },
+            answers: { include: { seller: { select: { campusAlias: true } } } }
+          }
+        }
+      }
+    });
+
+    return res.json({ success: true, data: updated, message: 'Listing updated successfully' });
+  } catch (error: any) {
+    if (error?.errors) {
+      const msg = error.errors.map((e: any) => `${e.path?.join('.') || 'field'}: ${e.message}`).join('; ');
+      return res.status(400).json({ success: false, message: msg });
+    }
+    return res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+auctionRouter.patch('/:id', authenticateToken, updateListingHandler);
+auctionRouter.put('/:id', authenticateToken, updateListingHandler);
+
+// 4.2 Delete Listing (Seller or Admin)
+auctionRouter.delete('/:id', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const listingId = req.params.id;
+    const listing = await prisma.auctionListing.findUnique({
+      where: { id: listingId },
+      include: { bids: { select: { id: true } } }
+    });
+
+    if (!listing) {
+      return res.status(404).json({ success: false, message: 'Listing not found' });
+    }
+
+    if (listing.sellerId !== req.user!.id && req.user!.role !== 'ADMIN') {
+      return res.status(403).json({ success: false, message: 'Only the seller or admin can delete this listing' });
+    }
+
+    // Clean up any saved listings first
+    await prisma.savedListing.deleteMany({ where: { listingId } });
+
+    // Delete listing (all related records cascade delete)
+    await prisma.auctionListing.delete({ where: { id: listingId } });
+
+    return res.json({ success: true, message: 'Listing deleted successfully' });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // 5. Place Bid (Transactional, Anti-Sniping)
 auctionRouter.post('/:id/bids', authenticateToken, async (req: AuthRequest, res) => {
   try {
@@ -220,7 +334,7 @@ auctionRouter.post('/:id/bids', authenticateToken, async (req: AuthRequest, res)
       bidType: 'MANUAL'
     });
 
-    return res.status(201).json({ success: true, ...result });
+    return res.status(201).json({ ...result });
   } catch (error: any) {
     return res.status(400).json({ success: false, message: error.message });
   }
