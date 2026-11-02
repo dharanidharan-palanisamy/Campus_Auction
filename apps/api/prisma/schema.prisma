@@ -15,8 +15,15 @@ model User {
   campusAlias      String
   studentId        String          @unique
   role             String          @default("STUDENT") // STUDENT or ADMIN
+  department       String?
+  college          String?
+  avatarUrl        String?
   isEmailVerified  Boolean         @default(true)
+  verificationNotes String?
   isSuspended      Boolean         @default(false)
+  suspensionReason String?
+  suspendedUntil   DateTime?
+  lastLogin        DateTime?
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
@@ -30,6 +37,9 @@ model User {
   notifications    Notification[]
   auditLogs        AuditLog[]
   outcomesWon      AuctionOutcome[]
+  disputesReported Dispute[]       @relation("DisputesReported")
+  disputesAgainst  Dispute[]       @relation("DisputesAgainst")
+  disputesAssigned Dispute[]       @relation("DisputesAssigned")
 }
 
 model Category {
@@ -70,6 +80,7 @@ model AuctionListing {
   outcome                  AuctionOutcome?
   handover                 HandoverRecord?
   events                   AuctionEvent[]
+  disputes                 Dispute[]
 
   @@index([status, closingTime])
   @@index([categoryId])
@@ -226,3 +237,37 @@ model AuditLog {
 
   actor      User?    @relation(fields: [actorId], references: [id])
 }
+
+model Dispute {
+  id                 String          @id @default(uuid())
+  reporterId         String
+  reportedUserId     String?
+  listingId          String?
+  category           String          // INAPPROPRIATE_LISTING, MISLEADING_DESCRIPTION, SUSPICIOUS_BIDDING, SELLER_MISCONDUCT, BUYER_MISCONDUCT, FAILED_HANDOVER, OTHER
+  description        String
+  priority           String          @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
+  status             String          @default("OPEN") // OPEN, UNDER_REVIEW, WAITING_FOR_INFORMATION, RESOLVED, REJECTED
+  assignedAdminId    String?
+  internalNotes      String?
+  resolutionReason   String?
+  resolvedAt         DateTime?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  reporter           User            @relation("DisputesReported", fields: [reporterId], references: [id], onDelete: Cascade)
+  reportedUser       User?           @relation("DisputesAgainst", fields: [reportedUserId], references: [id], onDelete: SetNull)
+  listing            AuctionListing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  assignedAdmin      User?           @relation("DisputesAssigned", fields: [assignedAdminId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([reporterId])
+}
+
+model AdminSetting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String   // JSON string
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+}
+
