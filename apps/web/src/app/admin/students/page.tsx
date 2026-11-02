@@ -109,6 +109,27 @@ function StudentsManagementContent() {
     fetchStudents();
   }, [search, statusTab, department, sort, page, limit]);
 
+  useEffect(() => {
+    const qStatus = searchParams.get('status');
+    if (qStatus && ['VERIFIED', 'PENDING', 'SUSPENDED'].includes(qStatus)) {
+      setStatusTab(qStatus as any);
+      setPage(1);
+    } else if (!qStatus || qStatus === 'ALL') {
+      setStatusTab('ALL');
+      setPage(1);
+    }
+  }, [searchParams]);
+
+  const handleTabChange = (tab: 'ALL' | 'VERIFIED' | 'PENDING' | 'SUSPENDED') => {
+    setStatusTab(tab);
+    setPage(1);
+    if (tab === 'ALL') {
+      router.push('/admin/students');
+    } else {
+      router.push(`/admin/students?status=${tab}`);
+    }
+  };
+
   // Actions
   const handleVerifyStudent = async () => {
     if (!selectedForVerify) return;
@@ -312,10 +333,7 @@ function StudentsManagementContent() {
           return (
             <button
               key={tab}
-              onClick={() => {
-                setStatusTab(tab);
-                setPage(1);
-              }}
+              onClick={() => handleTabChange(tab)}
               className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
                 isActive
                   ? 'bg-purple-600 text-white shadow-md shadow-purple-900/20'
@@ -825,3 +843,4 @@ function StudentsManagementContent() {
     </div>
   );
 }
+

@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { 
   LayoutDashboard,
@@ -86,7 +86,16 @@ const navSections: NavSection[] = [
 ];
 
 export function AdminSidebar() {
+  return (
+    <Suspense fallback={<div className="w-64 bg-slate-900 min-h-screen hidden lg:block" />}>
+      <AdminSidebarContent />
+    </Suspense>
+  );
+}
+
+function AdminSidebarContent() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const { user, logout } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
@@ -101,8 +110,32 @@ export function AdminSidebar() {
     if (href === '/admin') {
       return pathname === '/admin';
     }
-    const cleanHref = href.split('?')[0];
-    return pathname.startsWith(cleanHref);
+
+    const [targetPath, targetQuery] = href.split('?');
+
+    if (pathname !== targetPath) {
+      if (targetPath === '/admin/students' && pathname.startsWith('/admin/students/')) {
+        return !targetQuery;
+      }
+      return false;
+    }
+
+    if (targetQuery) {
+      const qParams = new URLSearchParams(targetQuery);
+      for (const [key, val] of qParams.entries()) {
+        if (searchParams.get(key) !== val) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    if (targetPath === '/admin/students') {
+      const currentStatus = searchParams.get('status');
+      return !currentStatus || currentStatus === 'ALL';
+    }
+
+    return true;
   };
 
   const sidebarContent = (
@@ -258,3 +291,4 @@ export function AdminSidebar() {
     </>
   );
 }
+
