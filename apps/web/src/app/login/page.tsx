@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
@@ -8,11 +8,21 @@ import { Gavel, AlertCircle, ArrowRight } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, setUserDirectly } = useAuth();
+  const { user, login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      if (user.role === 'ADMIN') {
+        router.push('/admin');
+      } else {
+        router.push('/auctions');
+      }
+    }
+  }, [user, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,7 +31,11 @@ export default function LoginPage() {
 
     const res = await login(email, password);
     if (res.success) {
-      router.push('/auctions');
+      if (res.user?.role === 'ADMIN') {
+        router.push('/admin');
+      } else {
+        router.push('/auctions');
+      }
     } else {
       setErrorMsg(res.message || 'Authentication failed');
     }

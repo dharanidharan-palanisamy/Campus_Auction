@@ -73,7 +73,7 @@ export function Navbar() {
             {user ? (
               <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
                 <Link
-                  href="/dashboard"
+                  href={user.role === 'ADMIN' ? '/admin' : '/dashboard'}
                   className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-100 transition"
                 >
                   <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center font-bold text-xs text-slate-700">

@@ -15,8 +15,8 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; message?: string }>;
-  adminLogin: (email: string, password: string) => Promise<{ success: boolean; message?: string }>;
+  login: (email: string, password: string) => Promise<{ success: boolean; message?: string; user?: User }>;
+  adminLogin: (email: string, password: string) => Promise<{ success: boolean; message?: string; user?: User }>;
   register: (payload: { email: string; password: string; fullName: string; campusAlias: string; studentId: string }) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
   setUserDirectly: (user: User | null, token: string | null) => void;
@@ -86,7 +86,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setToken(data.token);
         localStorage.setItem('campus_token', data.token);
         localStorage.setItem('campus_user', JSON.stringify(data.user));
-        return { success: true };
+        return { success: true, user: data.user };
       }
       return { success: false, message: data.message || 'Login failed' };
     } catch (err: any) {
@@ -107,7 +107,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setToken(data.token);
         localStorage.setItem('campus_token', data.token);
         localStorage.setItem('campus_user', JSON.stringify(data.user));
-        return { success: true };
+        return { success: true, user: data.user };
       }
       return { success: false, message: data.message || 'Admin login failed' };
     } catch (err: any) {
@@ -128,7 +128,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setToken(data.token);
         localStorage.setItem('campus_token', data.token);
         localStorage.setItem('campus_user', JSON.stringify(data.user));
-        return { success: true };
+        return { success: true, user: data.user };
       }
       return { success: false, message: data.message || 'Registration failed' };
     } catch (err: any) {
