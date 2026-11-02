@@ -11,12 +11,25 @@ body {
   font-family: inherit;
 }
 
-/* Ensure placeholder and input text contrast across browsers and dark mode */
-input, textarea, select {
-  color: #0f172a !important;
+/* Dark theme inputs & browser autofill contrast fix */
+.dark-input {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  caret-color: #ffffff !important;
 }
 
-input::placeholder, textarea::placeholder {
-  color: #64748b !important;
+.dark-input::placeholder {
+  color: #94a3b8 !important;
   opacity: 1 !important;
+}
+
+.dark-input:-webkit-autofill,
+.dark-input:-webkit-autofill:hover, 
+.dark-input:-webkit-autofill:focus,
+.dark-input:-webkit-autofill:active {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  -webkit-box-shadow: 0 0 0px 1000px #0f172a inset !important;
+  box-shadow: 0 0 0px 1000px #0f172a inset !important;
+  caret-color: #ffffff !important;
 }

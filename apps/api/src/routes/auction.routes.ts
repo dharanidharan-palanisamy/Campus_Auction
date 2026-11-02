@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { authenticateToken, AuthRequest, requireAdmin } from '../middlewares/auth';
 import { BiddingService } from '../services/bidding.service';
 import { createListingSchema, updateListingSchema, placeBidSchema, sellerDecisionSchema, handoverRecordSchema, questionSchema, answerSchema } from '@campus/shared';
+import { emitAdminEvent } from '../lib/socket';
 
 export const auctionRouter = Router();
 
@@ -210,7 +211,24 @@ auctionRouter.post('/', authenticateToken, async (req: AuthRequest, res) => {
       },
       include: {
         images: true,
-        category: true
+        category: true,
+        seller: {
+          select: {
+            id: true,
+            fullName: true,
+            campusAlias: true,
+            email: true,
+            department: true
+          }
+        }
+      }
+    });
+
+    // Notify Admin Panel in real time
+    emitAdminEvent('listing:created', {
+      listing: {
+        ...listing,
+        _count: { bids: 0 }
       }
     });
 

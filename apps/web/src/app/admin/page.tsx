@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { formatINR } from '@/lib/utils';
+import { useAdminSocket } from '@/hooks/useAdminSocket';
 import { 
   Users, 
   UserCheck, 
@@ -29,8 +30,9 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [range, setRange] = useState<'today' | '7d' | '30d' | '90d' | 'all'>('30d');
   const [errorMsg, setErrorMsg] = useState('');
+  const [livePulse, setLivePulse] = useState(false);
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('campus_token') : '';
+  const token = typeof window !== 'undefined' ? (localStorage.getItem('campus_admin_token') || localStorage.getItem('campus_token')) : '';
 
   const loadStats = async (selectedRange = range) => {
     setLoading(true);
@@ -56,14 +58,31 @@ export default function AdminDashboardPage() {
     loadStats(range);
   }, [range]);
 
+  // Live real-time sync from client actions
+  const handleLiveEvent = useCallback(() => {
+    setLivePulse(true);
+    loadStats(range);
+    const timer = setTimeout(() => setLivePulse(false), 2500);
+    return () => clearTimeout(timer);
+  }, [range]);
+
+  useAdminSocket(handleLiveEvent);
+
   return (
     <div className="space-y-8">
       {/* Page Title & Filter Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-            Marketplace Control Center
-          </h1>
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+              Marketplace Control Center
+            </h1>
+            {livePulse && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-300 animate-pulse">
+                ⚡ Synced Real-Time
+              </span>
+            )}
+          </div>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
             Real-time telemetry, student verifications, and auction moderation
           </p>

@@ -54,7 +54,7 @@ adminRouter.post('/auth/login', async (req, res) => {
     };
 
     const token = generateToken(userPayload);
-    res.cookie('token', token, {
+    res.cookie('admin_token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
@@ -79,6 +79,7 @@ adminRouter.post('/auth/login', async (req, res) => {
 
 // Admin Logout
 adminRouter.post('/auth/logout', (req, res) => {
+  res.clearCookie('admin_token');
   res.clearCookie('token');
   return res.json({ success: true, message: 'Administrator logged out successfully' });
 });
@@ -90,6 +91,114 @@ adminRouter.get('/auth/me', authenticateToken, requireAdmin, (req: AuthRequest, 
 
 // Protect all remaining admin routes
 adminRouter.use(authenticateToken, requireAdmin);
+
+// Admin Profile Details
+adminRouter.get('/profile', async (req: AuthRequest, res) => {
+  try {
+    const admin = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        campusAlias: true,
+        studentId: true,
+        role: true,
+        isEmailVerified: true,
+        createdAt: true,
+        department: true,
+        college: true,
+        lastLogin: true
+      }
+    });
+
+    if (!admin) {
+      return res.status(404).json({ success: false, message: 'Administrator not found' });
+    }
+
+    const [recentActions, totalActions] = await Promise.all([
+      prisma.auditLog.findMany({
+        where: { actorId: req.user!.id },
+        orderBy: { createdAt: 'desc' },
+        take: 15
+      }),
+      prisma.auditLog.count({
+        where: { actorId: req.user!.id }
+      })
+    ]);
+
+    return res.json({
+      success: true,
+      data: {
+        ...admin,
+        recentActions,
+        totalActions
+      }
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Update Admin Profile & Password
+adminRouter.patch('/profile', async (req: AuthRequest, res) => {
+  try {
+    const { fullName, campusAlias, currentPassword, newPassword } = req.body;
+    const admin = await prisma.user.findUnique({ where: { id: req.user!.id } });
+    if (!admin) {
+      return res.status(404).json({ success: false, message: 'Administrator not found' });
+    }
+
+    const updateData: any = {};
+    if (fullName) updateData.fullName = fullName.trim();
+    if (campusAlias) updateData.campusAlias = campusAlias.trim();
+
+    if (newPassword) {
+      if (!currentPassword) {
+        return res.status(400).json({ success: false, message: 'Current password is required to set a new password' });
+      }
+      const isMatch = await bcrypt.compare(currentPassword, admin.passwordHash);
+      if (!isMatch) {
+        return res.status(400).json({ success: false, message: 'Current password is incorrect' });
+      }
+      if (newPassword.length < 8) {
+        return res.status(400).json({ success: false, message: 'New password must be at least 8 characters' });
+      }
+      updateData.passwordHash = await bcrypt.hash(newPassword, 10);
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: req.user!.id },
+      data: updateData,
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        campusAlias: true,
+        studentId: true,
+        role: true,
+        isEmailVerified: true,
+        department: true,
+        college: true,
+        createdAt: true
+      }
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        actorId: req.user!.id,
+        action: 'UPDATE_ADMIN_PROFILE',
+        targetType: 'USER',
+        targetId: req.user!.id,
+        payload: JSON.stringify({ updatedFields: Object.keys(updateData) })
+      }
+    });
+
+    return res.json({ success: true, message: 'Profile updated successfully', user: updated });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
 
 // ==========================================
 // 2. DASHBOARD & OVERVIEW ANALYTICS

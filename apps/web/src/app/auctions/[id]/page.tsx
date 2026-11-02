@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { io, Socket } from 'socket.io-client';
 import confetti from 'canvas-confetti';
 import { formatINR, getTimeRemaining } from '@/lib/utils';
 import { 
+  ArrowLeft,
   Clock, 
   MapPin, 
   ShieldCheck, 
@@ -25,6 +27,7 @@ import {
 } from 'lucide-react';
 
 import { Suspense } from 'react';
+import { ImageDropzone } from '@/components/ImageDropzone';
 
 export default function AuctionDetailPage() {
   return (
@@ -350,7 +353,35 @@ function AuctionDetailContent() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
+      {/* Top Navigation & Back Button */}
+      <div className="mb-4 sm:mb-6 flex items-center justify-between gap-4">
+        <button
+          onClick={() => {
+            if (typeof window !== 'undefined' && window.history.length > 1) {
+              router.back();
+            } else {
+              router.push('/auctions');
+            }
+          }}
+          className="inline-flex items-center gap-2 text-xs sm:text-sm font-bold text-slate-700 hover:text-indigo-600 bg-white hover:bg-slate-50 active:scale-95 border border-slate-200 px-3.5 py-2 rounded-xl transition shadow-sm group"
+        >
+          <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+          <span>Back</span>
+        </button>
+
+        {/* Breadcrumb path for context */}
+        {auction && (
+          <nav className="hidden sm:flex items-center gap-1.5 text-xs text-slate-400">
+            <Link href="/auctions" className="hover:text-indigo-600 transition">Auctions</Link>
+            <span>/</span>
+            <span className="text-slate-600 font-medium truncate max-w-[180px]">{auction.category?.name || 'Item'}</span>
+            <span>/</span>
+            <span className="text-slate-900 font-bold truncate max-w-[220px]">{auction.title}</span>
+          </nav>
+        )}
+      </div>
+
       {/* Messages */}
       {errorMsg && (
         <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-sm flex items-center justify-between">
@@ -375,11 +406,11 @@ function AuctionDetailContent() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-10">
         {/* Left Column: Photos & Details (7 cols) */}
-        <div className="lg:col-span-7 space-y-8">
+        <div className="lg:col-span-7 space-y-6 sm:space-y-8">
           {/* Main Image */}
-          <div className="rounded-3xl overflow-hidden bg-slate-100 border border-slate-200 aspect-[4/3] relative">
+          <div className="rounded-2xl sm:rounded-3xl overflow-hidden bg-slate-100 border border-slate-200 aspect-[4/3] relative">
             <img
               src={auction.images?.[0]?.url || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=1000&q=80'}
               alt={auction.title}
@@ -394,7 +425,7 @@ function AuctionDetailContent() {
           </div>
 
           {/* Description & Condition */}
-          <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+          <div className="bg-white p-4 sm:p-6 lg:p-8 rounded-2xl sm:rounded-3xl border border-slate-200 shadow-sm space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2 mb-3">
@@ -463,27 +494,29 @@ function AuctionDetailContent() {
           </div>
 
           {/* Q&A Section */}
-          <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
-            <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-              <MessageSquare className="w-5 h-5 text-indigo-600" />
-              Item Questions & Answers ({questions.length})
+          <div className="bg-white p-4 sm:p-6 lg:p-8 rounded-2xl sm:rounded-3xl border border-slate-200 shadow-sm space-y-6">
+            <h3 className="text-base sm:text-lg font-black text-slate-900 flex items-center gap-2">
+              <MessageSquare className="w-5 h-5 text-indigo-600 shrink-0" />
+              <span>Item Questions & Answers ({questions.length})</span>
             </h3>
 
             {/* Post question form */}
-            <form onSubmit={handleAskQuestion} className="flex gap-2">
-              <input
-                type="text"
-                placeholder="Ask the seller about wear, battery life, included items..."
-                value={newQuestion}
-                onChange={(e) => setNewQuestion(e.target.value)}
-                className="flex-1 px-4 py-2 text-sm text-slate-900 placeholder:text-slate-500 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
+            <form onSubmit={handleAskQuestion} className="flex items-center gap-2 w-full min-w-0">
+              <div className="relative flex-1 min-w-0">
+                <input
+                  type="text"
+                  placeholder="Ask the seller about wear, battery life, included items..."
+                  value={newQuestion}
+                  onChange={(e) => setNewQuestion(e.target.value)}
+                  className="w-full min-w-0 pl-3.5 pr-3 py-2.5 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
+                />
+              </div>
               <button
                 type="submit"
-                className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs px-4 py-2 rounded-xl transition flex items-center gap-1.5"
+                className="shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-3.5 sm:px-4 py-2.5 rounded-xl transition flex items-center gap-1.5 shadow-sm shadow-indigo-100"
               >
-                <Send className="w-3.5 h-3.5" />
-                Ask
+                <Send className="w-3.5 h-3.5 shrink-0" />
+                <span>Ask</span>
               </button>
             </form>
 
@@ -498,13 +531,13 @@ function AuctionDetailContent() {
                       <span className="font-bold text-slate-800">{q.asker?.campusAlias}</span>
                       <span className="text-slate-400">{new Date(q.createdAt).toLocaleDateString()}</span>
                     </div>
-                    <p className="text-sm text-slate-700">{q.content}</p>
+                    <p className="text-xs sm:text-sm text-slate-700 break-words">{q.content}</p>
 
                     {/* Answers */}
                     {q.answers && q.answers.length > 0 && (
-                      <div className="ml-4 pl-3 border-l-2 border-indigo-200 space-y-1">
+                      <div className="ml-2 sm:ml-4 pl-2.5 sm:pl-3 border-l-2 border-indigo-200 space-y-1">
                         {q.answers.map((ans: any) => (
-                          <div key={ans.id} className="bg-indigo-50/50 p-3 rounded-xl text-xs">
+                          <div key={ans.id} className="bg-indigo-50/50 p-2.5 sm:p-3 rounded-xl text-xs break-words">
                             <span className="font-bold text-indigo-900">{ans.seller?.campusAlias} (Seller): </span>
                             <span className="text-slate-700">{ans.content}</span>
                           </div>
@@ -520,7 +553,7 @@ function AuctionDetailContent() {
 
         {/* Right Column: Live Bidding Console (5 cols) */}
         <div className="lg:col-span-5 space-y-6">
-          <div className="sticky top-24 bg-white p-7 rounded-3xl border border-slate-200 shadow-xl space-y-6">
+          <div className="sticky top-24 bg-white p-4 sm:p-6 lg:p-7 rounded-2xl sm:rounded-3xl border border-slate-200 shadow-xl space-y-6">
             {/* Live Countdown Clock */}
             <div className={`p-4 rounded-2xl text-center flex flex-col items-center justify-center ${
               timeLeft.isExpired
@@ -631,15 +664,15 @@ function AuctionDetailContent() {
                     </button>
 
                     {/* Custom Higher Bid Input */}
-                    <div className="flex gap-2">
-                      <div className="relative flex-1">
+                    <div className="flex items-center gap-2 w-full min-w-0">
+                      <div className="relative flex-1 min-w-0">
                         <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">₹</span>
                         <input
                           type="number"
                           placeholder={`Custom (min ${minNextBid / 100})`}
                           value={customBidAmount}
                           onChange={(e) => setCustomBidAmount(e.target.value)}
-                          className="w-full pl-8 pr-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-500 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          className="w-full min-w-0 pl-8 pr-3 py-2.5 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
                         />
                       </div>
                       <button
@@ -648,7 +681,7 @@ function AuctionDetailContent() {
                           if (!isNaN(val)) handlePlaceBid(Math.round(val * 100));
                         }}
                         disabled={isSubmittingBid || !customBidAmount}
-                        className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold text-xs transition"
+                        className="shrink-0 px-4 sm:px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold text-xs transition"
                       >
                         Bid
                       </button>
@@ -827,18 +860,13 @@ function AuctionDetailContent() {
                 />
               </div>
 
-              {/* Photo URL */}
-              <div>
-                <label className="block font-bold uppercase tracking-wider text-slate-500 mb-1">
-                  Product Image URL
-                </label>
-                <input
-                  type="url"
-                  value={editImageUrl}
-                  onChange={(e) => setEditImageUrl(e.target.value)}
-                  className="w-full px-4 py-2.5 text-xs font-mono bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
+              {/* Drag & Drop Photo Uploader */}
+              <ImageDropzone
+                value={editImageUrl}
+                onChange={setEditImageUrl}
+                label="Product Photo"
+                required={false}
+              />
 
               {/* Action Buttons */}
               <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">

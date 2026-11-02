@@ -148,32 +148,34 @@ function BrowseAuctionsContent() {
 
       {/* Status Tabs (All Products / Live Now / Sold & Ended) */}
       {!isClosingSoon && (
-        <div className="flex items-center gap-2 mb-5">
-          {STATUS_TABS.map(({ value, label, icon: Icon }) => {
-            const isActive = statusTab === value;
-            return (
-              <button
-                key={value}
-                onClick={() => {
-                  setStatusTab(value as any);
-                  if (value === 'ACTIVE') setSort('closing_soon');
-                  else setSort('newest');
-                }}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${
-                  isActive
-                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm shadow-indigo-200'
-                    : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                {label}
-              </button>
-            );
-          })}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 scrollbar-none w-full sm:w-auto">
+            {STATUS_TABS.map(({ value, label, icon: Icon }) => {
+              const isActive = statusTab === value;
+              return (
+                <button
+                  key={value}
+                  onClick={() => {
+                    setStatusTab(value as any);
+                    if (value === 'ACTIVE') setSort('closing_soon');
+                    else setSort('newest');
+                  }}
+                  className={`shrink-0 flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold border transition-all whitespace-nowrap ${
+                    isActive
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm shadow-indigo-200'
+                      : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {label}
+                </button>
+              );
+            })}
+          </div>
 
           {/* Summary counts */}
           {statusTab === 'ALL' && !loading && (
-            <span className="ml-auto text-xs text-slate-400 font-medium">
+            <span className="text-xs text-slate-400 font-medium shrink-0">
               {auctions.length} total · <span className="text-emerald-600 font-semibold">{liveCount} live</span> · {endedCount} ended
             </span>
           )}
@@ -181,53 +183,76 @@ function BrowseAuctionsContent() {
       )}
 
       {/* Filters Toolbar */}
-      <div className="flex flex-wrap items-center gap-3 p-4 bg-white rounded-2xl border border-slate-200 shadow-sm mb-8">
-        <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider pr-3 border-r border-slate-200">
-          <SlidersHorizontal className="w-4 h-4" />
-          Filters
-        </div>
-
-        {/* Category */}
-        <select
-          value={selectedCategory}
-          onChange={(e) => setSelectedCategory(e.target.value)}
-          className="text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-        >
-          <option value="">All Categories</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.slug}>{c.name}</option>
-          ))}
-        </select>
-
-        {/* Condition */}
-        <select
-          value={condition}
-          onChange={(e) => setCondition(e.target.value)}
-          className="text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-        >
-          <option value="">Any Condition</option>
-          <option value="NEW">New</option>
-          <option value="LIKE_NEW">Like New</option>
-          <option value="GOOD">Good</option>
-          <option value="FAIR">Fair</option>
-        </select>
-
-        {/* Sort */}
-        {!isClosingSoon && (
-          <div className="ml-auto flex items-center gap-2">
-            <span className="text-xs text-slate-400">Sort by:</span>
-            <select
-              value={sort}
-              onChange={(e) => setSort(e.target.value)}
-              className="text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-            >
-              <option value="newest">Recently Listed</option>
-              <option value="closing_soon">Closing Soonest</option>
-              <option value="price_low">Lowest Price</option>
-              <option value="price_high">Highest Price</option>
-            </select>
+      <div className="p-3.5 sm:p-4 bg-white rounded-2xl border border-slate-200 shadow-sm mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          {/* Filters Title Header */}
+          <div className="flex items-center justify-between sm:justify-start gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider pb-2 sm:pb-0 border-b sm:border-b-0 sm:border-r border-slate-200 sm:pr-3 shrink-0">
+            <div className="flex items-center gap-2">
+              <SlidersHorizontal className="w-4 h-4 text-indigo-600" />
+              <span>Filters</span>
+            </div>
+            {(selectedCategory || condition) && (
+              <button
+                onClick={() => {
+                  setSelectedCategory('');
+                  setCondition('');
+                }}
+                className="text-[11px] font-semibold text-rose-600 hover:text-rose-700 sm:hidden"
+              >
+                Reset
+              </button>
+            )}
           </div>
-        )}
+
+          {/* Filter Dropdowns Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:items-center gap-2.5 sm:gap-3 flex-1 min-w-0">
+            {/* Category */}
+            <div className="w-full sm:w-auto">
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                className="w-full sm:w-auto text-xs font-semibold bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition cursor-pointer"
+              >
+                <option value="">All Categories</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.slug}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Condition */}
+            <div className="w-full sm:w-auto">
+              <select
+                value={condition}
+                onChange={(e) => setCondition(e.target.value)}
+                className="w-full sm:w-auto text-xs font-semibold bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition cursor-pointer"
+              >
+                <option value="">Any Condition</option>
+                <option value="NEW">New</option>
+                <option value="LIKE_NEW">Like New</option>
+                <option value="GOOD">Good</option>
+                <option value="FAIR">Fair</option>
+              </select>
+            </div>
+
+            {/* Sort */}
+            {!isClosingSoon && (
+              <div className="w-full sm:w-auto sm:ml-auto flex items-center justify-between sm:justify-end gap-2 pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                <span className="text-xs text-slate-500 font-medium shrink-0">Sort by:</span>
+                <select
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value)}
+                  className="w-full sm:w-auto text-xs font-semibold bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition cursor-pointer"
+                >
+                  <option value="newest">Recently Listed</option>
+                  <option value="closing_soon">Closing Soonest</option>
+                  <option value="price_low">Lowest Price</option>
+                  <option value="price_high">Highest Price</option>
+                </select>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Grid */}

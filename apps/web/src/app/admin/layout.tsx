@@ -4,60 +4,27 @@ import React from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { AdminSidebar } from '@/components/admin/AdminSidebar';
-import { ShieldAlert, ArrowRight, Loader2, Home } from 'lucide-react';
+import { ShieldAlert, ArrowRight, Loader2, Home, Activity } from 'lucide-react';
 import Link from 'next/link';
+import { useAdminSocket } from '@/hooks/useAdminSocket';
+import { AdminLiveTelemetry } from '@/components/admin/AdminLiveTelemetry';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <React.Suspense fallback={<div className="min-h-screen bg-slate-900 flex items-center justify-center p-4"><span className="text-xs font-semibold text-slate-400">Loading admin center...</span></div>}>
+      <AdminLayoutContent>{children}</AdminLayoutContent>
+    </React.Suspense>
+  );
+}
+
+function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, isLoading } = useAuth();
+  const { adminUser, isAdminLoading } = useAuth();
 
   // If on admin login page, display standalone without admin shell
   if (pathname === '/admin/login') {
     return <>{children}</>;
-  }
-
-  // Loading state
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
-        <Loader2 className="w-8 h-8 text-purple-600 animate-spin mb-3" />
-        <span className="text-xs font-semibold text-slate-500">Verifying administrative credentials...</span>
-      </div>
-    );
-  }
-
-  // Not logged in or not admin
-  if (!user || user.role !== 'ADMIN') {
-    return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-slate-800 rounded-3xl border border-slate-700 p-8 text-center space-y-6 shadow-2xl">
-          <div className="w-14 h-14 rounded-2xl bg-rose-500/10 text-rose-400 border border-rose-500/20 flex items-center justify-center mx-auto">
-            <ShieldAlert className="w-7 h-7" />
-          </div>
-          <div>
-            <h2 className="text-2xl font-black text-white">Restricted Access</h2>
-            <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-              This portal is restricted to authorized campus marketplace administrators only. Student accounts cannot access the control center.
-            </p>
-          </div>
-          <div className="space-y-2.5 pt-2">
-            <Link
-              href="/admin/login"
-              className="w-full py-3 px-4 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-2"
-            >
-              Sign In as Administrator <ArrowRight className="w-4 h-4" />
-            </Link>
-            <Link
-              href="/"
-              className="w-full py-2.5 px-4 rounded-xl text-slate-400 hover:text-white font-semibold text-xs transition flex items-center justify-center gap-1.5"
-            >
-              <Home className="w-3.5 h-3.5" /> Return to Campus Marketplace
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
   }
 
   // Derive breadcrumb from pathname
@@ -68,23 +35,66 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     return { href, label };
   });
 
+  const isAuthorized = !isAdminLoading && adminUser && adminUser.role === 'ADMIN';
+
+  const { isConnected, notifications, dismissNotification } = useAdminSocket();
+
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col lg:flex-row font-sans text-slate-900">
+    <div className="min-h-screen bg-slate-100 flex flex-col lg:flex-row font-sans text-slate-900 relative">
+      {/* Loading state overlay */}
+      {isAdminLoading && (
+        <div className="fixed inset-0 bg-slate-50 z-50 flex flex-col items-center justify-center p-4">
+          <Loader2 className="w-8 h-8 text-purple-600 animate-spin mb-3" />
+          <span className="text-xs font-semibold text-slate-500">Verifying administrative credentials...</span>
+        </div>
+      )}
+
+      {/* Unauthorized access overlay */}
+      {!isAdminLoading && (!adminUser || adminUser.role !== 'ADMIN') && (
+        <div className="fixed inset-0 bg-slate-900 z-50 flex items-center justify-center p-4">
+          <div className="max-w-md w-full bg-slate-800 rounded-3xl border border-slate-700 p-8 text-center space-y-6 shadow-2xl">
+            <div className="w-14 h-14 rounded-2xl bg-rose-500/10 text-rose-400 border border-rose-500/20 flex items-center justify-center mx-auto">
+              <ShieldAlert className="w-7 h-7" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-black text-white">Restricted Access</h2>
+              <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                This portal is restricted to authorized campus marketplace administrators only. Student accounts cannot access the control center.
+              </p>
+            </div>
+            <div className="space-y-2.5 pt-2">
+              <Link
+                href="/admin/login"
+                className="w-full py-3 px-4 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-2"
+              >
+                Sign In as Administrator <ArrowRight className="w-4 h-4" />
+              </Link>
+              <Link
+                href="/"
+                className="w-full py-2.5 px-4 rounded-xl text-slate-400 hover:text-white font-semibold text-xs transition flex items-center justify-center gap-1.5"
+              >
+                <Home className="w-3.5 h-3.5" /> Return to Campus Marketplace
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
       <AdminSidebar />
       <div className="flex-1 flex flex-col min-w-0 min-h-screen">
         {/* Topbar */}
-        <header className="h-14 bg-white border-b border-slate-200 px-4 sm:px-8 flex items-center justify-between shrink-0">
+        <header className="h-14 bg-white border-b border-slate-200 px-3 sm:px-6 lg:px-8 flex items-center justify-between gap-3 shrink-0">
           {/* Breadcrumbs */}
-          <nav className="flex items-center gap-1.5 text-xs font-medium text-slate-500 overflow-x-auto py-1">
-            <Link href="/admin" className="hover:text-purple-600 transition">
+          <nav className="flex items-center gap-1.5 text-xs font-medium text-slate-500 overflow-x-auto py-1 min-w-0 scrollbar-none">
+            <Link href="/admin" className="hover:text-purple-600 transition shrink-0">
               Admin
             </Link>
             {breadcrumbs.slice(1).map((b, idx) => (
               <React.Fragment key={b.href}>
-                <span className="text-slate-300">/</span>
+                <span className="text-slate-300 shrink-0">/</span>
                 <Link
                   href={b.href}
-                  className={`capitalize transition ${
+                  className={`capitalize transition truncate ${
                     idx === breadcrumbs.length - 2
                       ? 'text-slate-900 font-bold'
                       : 'hover:text-purple-600'
@@ -96,16 +106,31 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             ))}
           </nav>
 
-          <div className="flex items-center gap-3">
-            <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              API Connected
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <span
+              className={`inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-bold border transition ${
+                isConnected
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : 'bg-amber-50 text-amber-700 border-amber-200'
+              }`}
+              title={isConnected ? 'Real-Time WebSocket Sync Active' : 'Connecting to Real-Time Telemetry...'}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`} />
+              <span className="hidden xs:inline">{isConnected ? 'Live Sync Active' : 'Connecting...'}</span>
+              <span className="xs:hidden">{isConnected ? 'Live' : 'Connecting'}</span>
             </span>
           </div>
         </header>
 
-        {/* Content Area */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8">
+        {/* Real-time floating telemetry notifications */}
+        <AdminLiveTelemetry
+          isConnected={isConnected}
+          notifications={notifications}
+          onDismiss={dismissNotification}
+        />
+
+        {/* Content Area - unconditionally rendered so Next.js never drops the segment */}
+        <main className={`flex-1 p-3 sm:p-5 lg:p-8 min-w-0 ${!isAuthorized ? 'invisible pointer-events-none' : ''}`}>
           {children}
         </main>
       </div>

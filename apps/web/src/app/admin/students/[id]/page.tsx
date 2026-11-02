@@ -63,7 +63,7 @@ export default function StudentDetailPage({ params }: StudentDetailProps) {
   const fetchStudent = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('campus_token');
+      const token = localStorage.getItem('campus_admin_token') || localStorage.getItem('campus_token');
       const res = await fetch(`${API_BASE}/admin/students/${studentId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -87,7 +87,7 @@ export default function StudentDetailPage({ params }: StudentDetailProps) {
   const handleVerify = async () => {
     try {
       setActionLoading(true);
-      const token = localStorage.getItem('campus_token');
+      const token = localStorage.getItem('campus_admin_token') || localStorage.getItem('campus_token');
       const res = await fetch(`${API_BASE}/admin/students/${studentId}/verify`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -115,7 +115,7 @@ export default function StudentDetailPage({ params }: StudentDetailProps) {
     }
     try {
       setActionLoading(true);
-      const token = localStorage.getItem('campus_token');
+      const token = localStorage.getItem('campus_admin_token') || localStorage.getItem('campus_token');
       const res = await fetch(`${API_BASE}/admin/students/${studentId}/reject-verification`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -143,7 +143,7 @@ export default function StudentDetailPage({ params }: StudentDetailProps) {
     }
     try {
       setActionLoading(true);
-      const token = localStorage.getItem('campus_token');
+      const token = localStorage.getItem('campus_admin_token') || localStorage.getItem('campus_token');
       const res = await fetch(`${API_BASE}/admin/students/${studentId}/suspend`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -167,7 +167,7 @@ export default function StudentDetailPage({ params }: StudentDetailProps) {
   const handleReactivate = async () => {
     try {
       setActionLoading(true);
-      const token = localStorage.getItem('campus_token');
+      const token = localStorage.getItem('campus_admin_token') || localStorage.getItem('campus_token');
       const res = await fetch(`${API_BASE}/admin/students/${studentId}/reactivate`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -191,7 +191,7 @@ export default function StudentDetailPage({ params }: StudentDetailProps) {
   const handleDelete = async () => {
     try {
       setActionLoading(true);
-      const token = localStorage.getItem('campus_token');
+      const token = localStorage.getItem('campus_admin_token') || localStorage.getItem('campus_token');
       const res = await fetch(`${API_BASE}/admin/students/${studentId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }

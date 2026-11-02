@@ -4,13 +4,14 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
-import { Gavel, AlertCircle, ArrowRight } from 'lucide-react';
+import { Gavel, AlertCircle, ArrowRight, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
   const { user, login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -80,14 +81,24 @@ export default function LoginPage() {
 
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Password</label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full px-4 py-2.5 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full pl-4 pr-10 py-2.5 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="p-1 text-slate-400 hover:text-slate-700 absolute right-3 top-1/2 -translate-y-1/2 rounded-lg transition"
+                title={showPassword ? 'Hide password' : 'View password'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
           <button
@@ -120,11 +131,11 @@ export default function LoginPage() {
               <span className="text-[10px] text-slate-400">aarav.sharma@...</span>
             </button>
             <button
-              onClick={() => setPreset('admin@campus.edu', 'CampusPassword123!')}
-              className="p-2 text-left bg-slate-50 hover:bg-purple-50 border border-slate-200 rounded-xl transition"
+              onClick={() => setPreset('priya.patel@campus.edu', 'CampusPassword123!')}
+              className="p-2 text-left bg-slate-50 hover:bg-indigo-50 border border-slate-200 rounded-xl transition"
             >
-              <span className="font-bold text-purple-900 block">Administrator</span>
-              <span className="text-[10px] text-slate-400">admin@campus.edu</span>
+              <span className="font-bold text-slate-800 block">Priya (Student)</span>
+              <span className="text-[10px] text-slate-400">priya.patel@...</span>
             </button>
           </div>
         </div>

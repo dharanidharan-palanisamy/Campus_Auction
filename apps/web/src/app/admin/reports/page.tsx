@@ -28,7 +28,7 @@ export default function AdminReportsPage() {
   const fetchReports = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('campus_token');
+      const token = localStorage.getItem('campus_admin_token') || localStorage.getItem('campus_token');
       const res = await fetch(`${API_BASE}/admin/reports/overview?range=${range}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -49,7 +49,7 @@ export default function AdminReportsPage() {
 
   const downloadCSV = async (type: 'auctions' | 'bids' | 'students') => {
     try {
-      const token = localStorage.getItem('campus_token');
+      const token = localStorage.getItem('campus_admin_token') || localStorage.getItem('campus_token');
       const url =
         type === 'students'
           ? `${API_BASE}/admin/students/export`
@@ -87,8 +87,8 @@ export default function AdminReportsPage() {
         </div>
 
         {/* Range Selector & Print */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="bg-white p-1 rounded-xl border border-slate-200 flex items-center shadow-sm">
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap overflow-x-auto pb-1 sm:pb-0">
+          <div className="bg-white p-1 rounded-xl border border-slate-200 flex items-center shadow-sm shrink-0">
             {(['7d', '30d', '90d', 'all'] as const).map((r) => (
               <button
                 key={r}

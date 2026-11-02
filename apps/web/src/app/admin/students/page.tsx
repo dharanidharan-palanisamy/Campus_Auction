@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { useAdminSocket } from '@/hooks/useAdminSocket';
 import { 
   Users, 
   Search, 
@@ -74,7 +75,7 @@ function StudentsManagementContent() {
 
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('campus_token') : '';
+  const token = typeof window !== 'undefined' ? (localStorage.getItem('campus_admin_token') || localStorage.getItem('campus_token')) : '';
 
   const fetchStudents = async () => {
     setLoading(true);
@@ -108,6 +109,29 @@ function StudentsManagementContent() {
   useEffect(() => {
     fetchStudents();
   }, [search, statusTab, department, sort, page, limit]);
+
+  // Real-time dynamic sync when students register in client panel
+  const handleLiveEvent = useCallback((event: any) => {
+    if (event.type === 'STUDENT_REGISTERED' || event.type === 'STUDENT_STATUS') {
+      fetchStudents();
+    }
+  }, [search, statusTab, department, sort, page, limit]);
+
+  useAdminSocket(handleLiveEvent);
+
+  // Close modals on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (selectedForVerify) setSelectedForVerify(null);
+        if (selectedForReject) setSelectedForReject(null);
+        if (selectedForSuspend) setSelectedForSuspend(null);
+        if (selectedForDelete) setSelectedForDelete(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedForVerify, selectedForReject, selectedForSuspend, selectedForDelete]);
 
   useEffect(() => {
     const qStatus = searchParams.get('status');
@@ -327,23 +351,23 @@ function StudentsManagementContent() {
       )}
 
       {/* Filter Tabs Bar */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1.5 sm:pb-0 scrollbar-none">
         {(['ALL', 'VERIFIED', 'PENDING', 'SUSPENDED'] as const).map((tab) => {
           const isActive = statusTab === tab;
           return (
             <button
               key={tab}
               onClick={() => handleTabChange(tab)}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              className={`flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
                 isActive
                   ? 'bg-purple-600 text-white shadow-md shadow-purple-900/20'
                   : 'bg-white text-slate-600 border border-slate-200 hover:border-purple-300 hover:text-purple-600'
               }`}
             >
-              {tab === 'ALL' && <Users className="w-3.5 h-3.5" />}
-              {tab === 'VERIFIED' && <UserCheck className="w-3.5 h-3.5" />}
-              {tab === 'PENDING' && <Clock className="w-3.5 h-3.5" />}
-              {tab === 'SUSPENDED' && <Ban className="w-3.5 h-3.5" />}
+              {tab === 'ALL' && <Users className="w-3.5 h-3.5 shrink-0" />}
+              {tab === 'VERIFIED' && <UserCheck className="w-3.5 h-3.5 shrink-0" />}
+              {tab === 'PENDING' && <Clock className="w-3.5 h-3.5 shrink-0" />}
+              {tab === 'SUSPENDED' && <Ban className="w-3.5 h-3.5 shrink-0" />}
 
               <span>
                 {tab === 'ALL' && 'All Students'}
@@ -357,13 +381,13 @@ function StudentsManagementContent() {
       </div>
 
       {/* Search and Advanced Filter Bar */}
-      <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-stretch md:items-center gap-3">
+      <div className="p-3 sm:p-4 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-stretch md:items-center gap-3">
         {/* Search Input */}
         <div className="relative flex-1">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search by student name, email, student ID, or alias..."
+            placeholder="Search student name, email, ID, or alias..."
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
@@ -373,15 +397,15 @@ function StudentsManagementContent() {
           />
         </div>
 
-        {/* Department Filter */}
-        <div className="flex items-center gap-2">
+        {/* Department & Sort Filters */}
+        <div className="grid grid-cols-2 sm:flex sm:items-center gap-2">
           <select
             value={department}
             onChange={(e) => {
               setDepartment(e.target.value);
               setPage(1);
             }}
-            className="text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-400"
+            className="text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl px-2.5 sm:px-3 py-2.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-400 w-full sm:w-auto"
           >
             <option value="">All Departments</option>
             <option value="Computer Science">Computer Science & Eng.</option>
@@ -391,14 +415,13 @@ function StudentsManagementContent() {
             <option value="Information Technology">Information Technology</option>
           </select>
 
-          {/* Sort Select */}
           <select
             value={sort}
             onChange={(e) => {
               setSort(e.target.value);
               setPage(1);
             }}
-            className="text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-400"
+            className="text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl px-2.5 sm:px-3 py-2.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-400 w-full sm:w-auto"
           >
             <option value="newest">Recently Registered</option>
             <option value="oldest">Earliest Registered</option>
@@ -408,93 +431,57 @@ function StudentsManagementContent() {
         </div>
       </div>
 
-      {/* Main Student Data Table */}
+      {/* Main Student Records View */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 text-slate-400 uppercase font-bold tracking-wider border-b border-slate-200">
-              <tr>
-                <th className="py-3.5 px-4">Student</th>
-                <th className="py-3.5 px-4">Student ID / Email</th>
-                <th className="py-3.5 px-4">Department & College</th>
-                <th className="py-3.5 px-4">Verification</th>
-                <th className="py-3.5 px-4">Account Status</th>
-                <th className="py-3.5 px-4 text-center">Activity</th>
-                <th className="py-3.5 px-4">Joined</th>
-                <th className="py-3.5 px-4 text-right">Actions</th>
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-slate-100">
-              {loading ? (
-                <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
-                    <Loader2 className="w-6 h-6 animate-spin text-purple-600 mx-auto mb-2" />
-                    Fetching student records...
-                  </td>
-                </tr>
-              ) : students.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
-                    No students found matching your criteria.
-                  </td>
-                </tr>
-              ) : (
-                students.map((st) => (
-                  <tr key={st.id} className="hover:bg-slate-50/70 transition">
-                    {/* Student Identity */}
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-700 font-bold flex items-center justify-center shrink-0">
-                          {st.campusAlias?.substring(0, 2).toUpperCase()}
-                        </div>
-                        <div className="min-w-0">
-                          <Link
-                            href={`/admin/students/${st.id}`}
-                            className="font-bold text-slate-900 hover:text-purple-600 transition block truncate"
-                          >
-                            {st.fullName}
-                          </Link>
-                          <span className="text-[11px] text-slate-400 block truncate">
-                            @{st.campusAlias}
-                          </span>
-                        </div>
+        {/* Loading & Empty States */}
+        {loading ? (
+          <div className="py-14 text-center text-slate-400">
+            <Loader2 className="w-7 h-7 animate-spin text-purple-600 mx-auto mb-2" />
+            <p className="text-xs font-semibold">Fetching student records...</p>
+          </div>
+        ) : students.length === 0 ? (
+          <div className="py-14 text-center text-slate-400">
+            <Users className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+            <p className="text-xs font-semibold text-slate-600">No students found matching your criteria.</p>
+          </div>
+        ) : (
+          <>
+            {/* 1. MOBILE RESPONSIVE CARDS (Phone / Small Screens < 768px) */}
+            <div className="md:hidden divide-y divide-slate-100">
+              {students.map((st) => (
+                <div key={st.id} className="p-4 space-y-3 hover:bg-slate-50/70 transition">
+                  {/* Top: Avatar, Name, and Status Badges */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-2xl bg-purple-100 text-purple-700 font-bold flex items-center justify-center shrink-0 text-sm">
+                        {st.campusAlias?.substring(0, 2).toUpperCase()}
                       </div>
-                    </td>
+                      <div className="min-w-0">
+                        <Link
+                          href={`/admin/students/${st.id}`}
+                          className="font-bold text-sm text-slate-900 hover:text-purple-600 transition block truncate"
+                        >
+                          {st.fullName}
+                        </Link>
+                        <span className="text-xs text-slate-400 block truncate">
+                          @{st.campusAlias}
+                        </span>
+                      </div>
+                    </div>
 
-                    {/* ID & Email */}
-                    <td className="py-3 px-4">
-                      <span className="font-mono text-slate-900 font-bold block">{st.studentId}</span>
-                      <span className="text-[11px] text-slate-500 block truncate max-w-[180px]">{st.email}</span>
-                    </td>
-
-                    {/* Department */}
-                    <td className="py-3 px-4">
-                      <span className="font-semibold text-slate-700 block truncate max-w-[180px]">
-                        {st.department || 'General Engineering'}
-                      </span>
-                      <span className="text-[10px] text-slate-400 block truncate max-w-[180px]">
-                        {st.college || 'Engineering Campus'}
-                      </span>
-                    </td>
-
-                    {/* Verification Status */}
-                    <td className="py-3 px-4">
+                    {/* Status Badges */}
+                    <div className="flex flex-col items-end gap-1 shrink-0">
                       {st.isEmailVerified ? (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200">
                           <Check className="w-3 h-3" /> Verified
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[10px] bg-amber-50 text-amber-700 border border-amber-200">
-                          <Clock className="w-3 h-3" /> Pending Review
+                          <Clock className="w-3 h-3" /> Pending
                         </span>
                       )}
-                    </td>
-
-                    {/* Account Status */}
-                    <td className="py-3 px-4">
                       {st.isSuspended ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[10px] bg-rose-50 text-rose-700 border border-rose-200">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold text-[10px] bg-rose-50 text-rose-700 border border-rose-200">
                           <Ban className="w-3 h-3" /> Suspended
                         </span>
                       ) : (
@@ -502,93 +489,255 @@ function StudentsManagementContent() {
                           Active
                         </span>
                       )}
-                    </td>
+                    </div>
+                  </div>
 
-                    {/* Marketplace Activity */}
-                    <td className="py-3 px-4 text-center">
-                      <div className="inline-flex items-center gap-2 font-mono text-[11px] text-slate-600 bg-slate-50 px-2 py-1 rounded-lg">
-                        <span title="Listings created">📦 {st._count?.listings || 0}</span>
-                        <span className="text-slate-300">|</span>
-                        <span title="Bids placed">⚡ {st._count?.bids || 0}</span>
-                      </div>
-                    </td>
+                  {/* Meta Details Grid */}
+                  <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Student ID</span>
+                      <span className="font-mono font-bold text-slate-800 truncate block">{st.studentId}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Email</span>
+                      <span className="text-slate-600 truncate block" title={st.email}>{st.email}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Department</span>
+                      <span className="text-slate-700 truncate block">{st.department || 'General'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Activity</span>
+                      <span className="font-mono text-slate-700 font-semibold">
+                        📦 {st._count?.listings || 0} &nbsp;|&nbsp; ⚡ {st._count?.bids || 0}
+                      </span>
+                    </div>
+                  </div>
 
-                    {/* Registered Date */}
-                    <td className="py-3 px-4 text-slate-500 font-mono text-[11px]">
-                      {new Date(st.createdAt).toLocaleDateString()}
-                    </td>
-
-                    {/* Actions */}
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        {/* 1. View Full Profile */}
-                        <Link
-                          href={`/admin/students/${st.id}`}
-                          title="View student profile & activity"
-                          className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 hover:text-purple-600 transition"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                        </Link>
-
-                        {/* 2. Verification Action */}
-                        {!st.isEmailVerified ? (
-                          <button
-                            onClick={() => setSelectedForVerify(st)}
-                            title="Verify Student Credentials"
-                            className="p-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition"
-                          >
-                            <UserCheck className="w-3.5 h-3.5" />
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => setSelectedForReject(st)}
-                            title="Revoke Verification"
-                            className="p-1.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition"
-                          >
-                            <UserX className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-
-                        {/* 3. Suspension Action */}
-                        {!st.isSuspended ? (
-                          <button
-                            onClick={() => setSelectedForSuspend(st)}
-                            title="Suspend Student Account"
-                            className="p-1.5 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 transition"
-                          >
-                            <Ban className="w-3.5 h-3.5" />
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleReactivateStudent(st)}
-                            title="Reactivate Student Account"
-                            className="p-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition"
-                          >
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-
-                        {/* 4. Delete Student */}
+                  {/* Mobile Actions Bar */}
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-[10px] font-mono text-slate-400">
+                      Joined {new Date(st.createdAt).toLocaleDateString()}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <Link
+                        href={`/admin/students/${st.id}`}
+                        className="px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition flex items-center gap-1"
+                      >
+                        <Eye className="w-3.5 h-3.5" /> Details
+                      </Link>
+                      {!st.isEmailVerified ? (
                         <button
-                          onClick={() => setSelectedForDelete(st)}
-                          title="Delete Student"
-                          className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition"
+                          onClick={() => setSelectedForVerify(st)}
+                          className="px-2.5 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 text-xs font-bold hover:bg-emerald-100 transition flex items-center gap-1"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <UserCheck className="w-3.5 h-3.5" /> Verify
                         </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                      ) : (
+                        <button
+                          onClick={() => setSelectedForReject(st)}
+                          className="px-2.5 py-1.5 rounded-xl border border-amber-200 bg-amber-50 text-amber-700 text-xs font-bold hover:bg-amber-100 transition flex items-center gap-1"
+                        >
+                          <UserX className="w-3.5 h-3.5" /> Revoke
+                        </button>
+                      )}
+                      {!st.isSuspended ? (
+                        <button
+                          onClick={() => setSelectedForSuspend(st)}
+                          className="p-1.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 transition"
+                          title="Suspend"
+                        >
+                          <Ban className="w-3.5 h-3.5" />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleReactivateStudent(st)}
+                          className="p-1.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition"
+                          title="Reactivate"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setSelectedForDelete(st)}
+                        className="p-1.5 rounded-xl border border-slate-200 bg-white hover:bg-rose-50 hover:text-rose-600 text-slate-400 transition"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
 
-        {/* Pagination Footer */}
-        <div className="p-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-          <span>
-            Showing {students.length} of {total} registered students
+            {/* 2. TABLET, LAPTOP & PC RESPONSIVE DATA TABLE (>= 768px) */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left text-xs min-w-[920px]">
+                <thead className="bg-slate-50 text-slate-400 uppercase font-bold tracking-wider border-b border-slate-200">
+                  <tr>
+                    <th className="py-3.5 px-4">Student</th>
+                    <th className="py-3.5 px-4">Student ID / Email</th>
+                    <th className="py-3.5 px-4">Department & College</th>
+                    <th className="py-3.5 px-4">Verification</th>
+                    <th className="py-3.5 px-4">Account Status</th>
+                    <th className="py-3.5 px-4 text-center">Activity</th>
+                    <th className="py-3.5 px-4">Joined</th>
+                    <th className="py-3.5 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+
+                <tbody className="divide-y divide-slate-100">
+                  {students.map((st) => (
+                    <tr key={st.id} className="hover:bg-slate-50/70 transition">
+                      {/* Student Identity */}
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-700 font-bold flex items-center justify-center shrink-0">
+                            {st.campusAlias?.substring(0, 2).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <Link
+                              href={`/admin/students/${st.id}`}
+                              className="font-bold text-slate-900 hover:text-purple-600 transition block truncate"
+                            >
+                              {st.fullName}
+                            </Link>
+                            <span className="text-[11px] text-slate-400 block truncate">
+                              @{st.campusAlias}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* ID & Email */}
+                      <td className="py-3 px-4">
+                        <span className="font-mono text-slate-900 font-bold block">{st.studentId}</span>
+                        <span className="text-[11px] text-slate-500 block truncate max-w-[180px]">{st.email}</span>
+                      </td>
+
+                      {/* Department */}
+                      <td className="py-3 px-4">
+                        <span className="font-semibold text-slate-700 block truncate max-w-[180px]">
+                          {st.department || 'General Engineering'}
+                        </span>
+                        <span className="text-[10px] text-slate-400 block truncate max-w-[180px]">
+                          {st.college || 'Engineering Campus'}
+                        </span>
+                      </td>
+
+                      {/* Verification Status */}
+                      <td className="py-3 px-4">
+                        {st.isEmailVerified ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <Check className="w-3 h-3" /> Verified
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[10px] bg-amber-50 text-amber-700 border border-amber-200">
+                            <Clock className="w-3 h-3" /> Pending Review
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Account Status */}
+                      <td className="py-3 px-4">
+                        {st.isSuspended ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[10px] bg-rose-50 text-rose-700 border border-rose-200">
+                            <Ban className="w-3 h-3" /> Suspended
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold text-[10px] bg-slate-100 text-slate-700">
+                            Active
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Marketplace Activity */}
+                      <td className="py-3 px-4 text-center">
+                        <div className="inline-flex items-center gap-2 font-mono text-[11px] text-slate-600 bg-slate-50 px-2 py-1 rounded-lg">
+                          <span title="Listings created">📦 {st._count?.listings || 0}</span>
+                          <span className="text-slate-300">|</span>
+                          <span title="Bids placed">⚡ {st._count?.bids || 0}</span>
+                        </div>
+                      </td>
+
+                      {/* Registered Date */}
+                      <td className="py-3 px-4 text-slate-500 font-mono text-[11px]">
+                        {new Date(st.createdAt).toLocaleDateString()}
+                      </td>
+
+                      {/* Actions */}
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {/* 1. View Full Profile */}
+                          <Link
+                            href={`/admin/students/${st.id}`}
+                            title="View student profile & activity"
+                            className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 hover:text-purple-600 transition"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </Link>
+
+                          {/* 2. Verification Action */}
+                          {!st.isEmailVerified ? (
+                            <button
+                              onClick={() => setSelectedForVerify(st)}
+                              title="Verify Student Credentials"
+                              className="p-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition"
+                            >
+                              <UserCheck className="w-3.5 h-3.5" />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => setSelectedForReject(st)}
+                              title="Revoke Verification"
+                              className="p-1.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition"
+                            >
+                              <UserX className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
+                          {/* 3. Suspension Action */}
+                          {!st.isSuspended ? (
+                            <button
+                              onClick={() => setSelectedForSuspend(st)}
+                              title="Suspend Student Account"
+                              className="p-1.5 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 transition"
+                            >
+                              <Ban className="w-3.5 h-3.5" />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleReactivateStudent(st)}
+                              title="Reactivate Student Account"
+                              className="p-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
+                          {/* 4. Delete Student */}
+                          <button
+                            onClick={() => setSelectedForDelete(st)}
+                            title="Delete Student"
+                            className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {/* Pagination Footer - Clean & Responsive across all screen sizes */}
+        <div className="p-3 sm:p-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+          <span className="text-center sm:text-left">
+            Showing <span className="font-bold text-slate-800">{students.length}</span> of <span className="font-bold text-slate-800">{total}</span> registered students
           </span>
 
           <div className="flex items-center gap-2">

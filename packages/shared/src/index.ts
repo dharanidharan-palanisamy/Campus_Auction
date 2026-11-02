@@ -60,6 +60,11 @@ export const loginSchema = z.object({
   password: z.string().min(1)
 });
 
+const imageItemSchema = z.string().refine(
+  (val) => val.startsWith('http://') || val.startsWith('https://') || val.startsWith('data:image/'),
+  { message: 'Must be a valid web URL or uploaded image file' }
+);
+
 export const createListingSchema = z.object({
   title: z.string().min(3).max(100),
   categoryId: z.string().uuid(),
@@ -71,7 +76,7 @@ export const createListingSchema = z.object({
   closingTime: z.string().datetime(),
   pickupLocation: z.string().min(3, 'Specify safe campus pickup point'),
   sellerNotes: z.string().max(500).optional(),
-  imageUrls: z.array(z.string().url()).min(1, 'At least one image is required')
+  imageUrls: z.array(imageItemSchema).min(1, 'At least one image is required')
 });
 
 export const updateListingSchema = z.object({
@@ -84,7 +89,7 @@ export const updateListingSchema = z.object({
   closingTime: z.string().datetime().optional(),
   pickupLocation: z.string().min(3).optional(),
   sellerNotes: z.string().max(500).optional().nullable(),
-  imageUrls: z.array(z.string().url()).min(1).optional()
+  imageUrls: z.array(imageItemSchema).min(1).optional()
 });
 
 export const placeBidSchema = z.object({

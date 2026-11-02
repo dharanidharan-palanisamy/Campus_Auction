@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { useAdminSocket } from '@/hooks/useAdminSocket';
 import {
   Package,
   Search,
@@ -52,7 +53,7 @@ export default function AdminListingsPage() {
   useEffect(() => {
     const fetchCats = async () => {
       try {
-        const token = localStorage.getItem('campus_token');
+        const token = localStorage.getItem('campus_admin_token') || localStorage.getItem('campus_token');
         const res = await fetch(`${API_BASE}/admin/categories`, {
           headers: { Authorization: `Bearer ${token}` }
         });
@@ -70,7 +71,7 @@ export default function AdminListingsPage() {
   const fetchListings = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('campus_token');
+      const token = localStorage.getItem('campus_admin_token') || localStorage.getItem('campus_token');
       const params = new URLSearchParams({
         page: page.toString(),
         limit: limit.toString(),
@@ -101,6 +102,32 @@ export default function AdminListingsPage() {
     fetchListings();
   }, [page, statusTab, selectedCategory]);
 
+  // Real-time dynamic updates when client creates listings or places bids
+  const handleLiveEvent = useCallback((event: any) => {
+    if (
+      event.type === 'LISTING_CREATED' ||
+      event.type === 'BID_PLACED' ||
+      event.type === 'LISTING_MODERATED'
+    ) {
+      fetchListings();
+    }
+  }, [page, statusTab, selectedCategory]);
+
+  useAdminSocket(handleLiveEvent);
+
+  // Close modals on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (inspectListing) setInspectListing(null);
+        if (moderateModal) setModerateModal(null);
+        if (deleteModal) setDeleteModal(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [inspectListing, moderateModal, deleteModal]);
+
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setPage(1);
@@ -110,7 +137,7 @@ export default function AdminListingsPage() {
   const handleOpenInspect = async (id: string) => {
     try {
       setInspectLoading(true);
-      const token = localStorage.getItem('campus_token');
+      const token = localStorage.getItem('campus_admin_token') || localStorage.getItem('campus_token');
       const res = await fetch(`${API_BASE}/admin/listings/${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -134,7 +161,7 @@ export default function AdminListingsPage() {
 
     try {
       setActionLoading(true);
-      const token = localStorage.getItem('campus_token');
+      const token = localStorage.getItem('campus_admin_token') || localStorage.getItem('campus_token');
       const res = await fetch(`${API_BASE}/admin/listings/${moderateModal.id}/moderate`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -165,7 +192,7 @@ export default function AdminListingsPage() {
     if (!deleteModal) return;
     try {
       setActionLoading(true);
-      const token = localStorage.getItem('campus_token');
+      const token = localStorage.getItem('campus_admin_token') || localStorage.getItem('campus_token');
       const res = await fetch(`${API_BASE}/admin/listings/${deleteModal.id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
@@ -289,145 +316,258 @@ export default function AdminListingsPage() {
             <p className="font-semibold text-slate-600">No listings match the current filters.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50/75 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  <th className="py-3 px-4">Item Details</th>
-                  <th className="py-3 px-4">Seller</th>
-                  <th className="py-3 px-4">Category</th>
-                  <th className="py-3 px-4">Price / Bids</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4">Closing / Created</th>
-                  <th className="py-3 px-4 text-right">Moderation Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-sm">
-                {listings.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50/60 transition">
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-center gap-3">
-                        {item.images?.[0]?.storagePath ? (
-                          <img
-                            src={item.images[0].storagePath}
-                            alt=""
-                            className="w-12 h-12 rounded-xl object-cover bg-slate-100 border border-slate-200 shrink-0"
-                          />
-                        ) : (
-                          <div className="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
-                            <Package className="w-6 h-6" />
-                          </div>
-                        )}
-                        <div className="min-w-0 max-w-xs">
-                          <p className="font-bold text-slate-900 truncate">{item.title}</p>
-                          <p className="text-xs text-slate-500 truncate">
-                            Pickup: {item.pickupLocation || 'Main Campus'}
-                          </p>
-                        </div>
+          <>
+            {/* 1. Mobile Cards (< 768px) */}
+            <div className="md:hidden divide-y divide-slate-100">
+              {listings.map((item) => (
+                <div key={item.id} className="p-4 space-y-3 hover:bg-slate-50/60 transition">
+                  <div className="flex items-start gap-3">
+                    {item.images?.[0]?.storagePath ? (
+                      <img
+                        src={item.images[0].storagePath}
+                        alt=""
+                        className="w-14 h-14 rounded-xl object-cover bg-slate-100 border border-slate-200 shrink-0"
+                      />
+                    ) : (
+                      <div className="w-14 h-14 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
+                        <Package className="w-6 h-6" />
                       </div>
-                    </td>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <h4 className="font-bold text-sm text-slate-900 truncate">{item.title}</h4>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${
+                          item.status === 'ACTIVE'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : item.status === 'COMPLETED'
+                            ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                            : item.status === 'CANCELLED' || item.status === 'REJECTED'
+                            ? 'bg-rose-50 text-rose-700 border-rose-200'
+                            : 'bg-slate-100 text-slate-700 border-slate-200'
+                        }`}>
+                          {item.status}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Seller: <Link href={`/admin/students/${item.seller?.id}`} className="text-indigo-600 font-semibold">@{item.seller?.campusAlias}</Link>
+                      </p>
+                      <p className="text-[11px] text-slate-400">
+                        Category: {item.category?.name || 'General'}
+                      </p>
+                    </div>
+                  </div>
 
-                    <td className="py-3.5 px-4">
-                      <Link
-                        href={`/admin/students/${item.seller?.id}`}
-                        className="font-semibold text-indigo-600 hover:text-indigo-800 text-xs block"
-                      >
-                        @{item.seller?.campusAlias}
-                      </Link>
-                      <span className="font-mono text-[11px] text-slate-400">ID: {item.seller?.studentId}</span>
-                    </td>
-
-                    <td className="py-3.5 px-4 text-xs font-medium text-slate-600">
-                      {item.category?.name || 'General'}
-                    </td>
-
-                    <td className="py-3.5 px-4">
-                      <div className="font-mono text-xs font-bold text-slate-900">
+                  <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Leading Bid</span>
+                      <span className="font-mono font-bold text-slate-900 text-sm">
                         {formatINR(item.currentLeadingBidInCents || item.startingPriceInCents)}
-                      </div>
-                      <div className="text-[11px] text-slate-500 flex items-center gap-1">
-                        <Gavel className="w-3 h-3 text-slate-400" />
-                        <span>{item._count?.bids || 0} bids placed</span>
-                      </div>
-                    </td>
-
-                    <td className="py-3.5 px-4">
-                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${
-                        item.status === 'ACTIVE'
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : item.status === 'COMPLETED'
-                          ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                          : item.status === 'CANCELLED' || item.status === 'REJECTED'
-                          ? 'bg-rose-50 text-rose-700 border-rose-200'
-                          : 'bg-slate-100 text-slate-700 border-slate-200'
-                      }`}>
-                        {item.status}
                       </span>
-                    </td>
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Bids</span>
+                      <span className="font-mono text-slate-700 font-semibold">
+                        {item._count?.bids || 0} placed
+                      </span>
+                    </div>
+                  </div>
 
-                    <td className="py-3.5 px-4 text-xs text-slate-500">
-                      <div>Close: {new Date(item.closingTime).toLocaleDateString('en-IN')}</div>
-                      <div className="text-[11px] text-slate-400">
-                        Created: {new Date(item.createdAt).toLocaleDateString('en-IN')}
-                      </div>
-                    </td>
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-[10px] text-slate-400">
+                      Closes: {new Date(item.closingTime).toLocaleDateString('en-IN')}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => handleOpenInspect(item.id)}
+                        className="px-2.5 py-1 text-xs font-semibold rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1"
+                      >
+                        <Eye className="w-3.5 h-3.5" /> View
+                      </button>
 
-                    <td className="py-3.5 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
+                      {item.status !== 'ACTIVE' && (
                         <button
-                          onClick={() => handleOpenInspect(item.id)}
-                          className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
-                          title="Inspect Details"
+                          onClick={() =>
+                            setModerateModal({
+                              id: item.id,
+                              targetStatus: 'ACTIVE',
+                              title: item.title,
+                            })
+                          }
+                          className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1"
                         >
-                          <Eye className="w-4 h-4" />
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Approve
                         </button>
+                      )}
 
-                        {item.status !== 'ACTIVE' && (
-                          <button
-                            onClick={() =>
-                              setModerateModal({
-                                id: item.id,
-                                targetStatus: 'ACTIVE',
-                                title: item.title,
-                              })
-                            }
-                            className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
-                            title="Approve / Activate"
-                          >
-                            <CheckCircle2 className="w-4 h-4" />
-                          </button>
-                        )}
-
-                        {item.status === 'ACTIVE' && (
-                          <button
-                            onClick={() =>
-                              setModerateModal({
-                                id: item.id,
-                                targetStatus: 'CANCELLED',
-                                title: item.title,
-                              })
-                            }
-                            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                            title="Cancel / Reject Listing"
-                          >
-                            <XCircle className="w-4 h-4" />
-                          </button>
-                        )}
-
+                      {item.status === 'ACTIVE' && (
                         <button
-                          onClick={() => setDeleteModal({ id: item.id, title: item.title })}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                          title="Delete Listing"
+                          onClick={() =>
+                            setModerateModal({
+                              id: item.id,
+                              targetStatus: 'CANCELLED',
+                              title: item.title,
+                            })
+                          }
+                          className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <XCircle className="w-3.5 h-3.5" /> Cancel
                         </button>
-                      </div>
-                    </td>
+                      )}
+
+                      <button
+                        onClick={() => setDeleteModal({ id: item.id, title: item.title })}
+                        className="p-1 text-slate-400 hover:text-rose-600 rounded-lg"
+                        title="Delete Listing"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* 2. Tablet, Laptop & Desktop Table (>= 768px) */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-[850px]">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50/75 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    <th className="py-3 px-4">Item Details</th>
+                    <th className="py-3 px-4">Seller</th>
+                    <th className="py-3 px-4">Category</th>
+                    <th className="py-3 px-4">Price / Bids</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4">Closing / Created</th>
+                    <th className="py-3 px-4 text-right">Moderation Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-sm">
+                  {listings.map((item) => (
+                    <tr key={item.id} className="hover:bg-slate-50/60 transition">
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-3">
+                          {item.images?.[0]?.storagePath ? (
+                            <img
+                              src={item.images[0].storagePath}
+                              alt=""
+                              className="w-12 h-12 rounded-xl object-cover bg-slate-100 border border-slate-200 shrink-0"
+                            />
+                          ) : (
+                            <div className="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
+                              <Package className="w-6 h-6" />
+                            </div>
+                          )}
+                          <div className="min-w-0 max-w-xs">
+                            <p className="font-bold text-slate-900 truncate">{item.title}</p>
+                            <p className="text-xs text-slate-500 truncate">
+                              Pickup: {item.pickupLocation || 'Main Campus'}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="py-3.5 px-4">
+                        <Link
+                          href={`/admin/students/${item.seller?.id}`}
+                          className="font-semibold text-indigo-600 hover:text-indigo-800 text-xs block"
+                        >
+                          @{item.seller?.campusAlias}
+                        </Link>
+                        <span className="font-mono text-[11px] text-slate-400">ID: {item.seller?.studentId}</span>
+                      </td>
+
+                      <td className="py-3.5 px-4 text-xs font-medium text-slate-600">
+                        {item.category?.name || 'General'}
+                      </td>
+
+                      <td className="py-3.5 px-4">
+                        <div className="font-mono text-xs font-bold text-slate-900">
+                          {formatINR(item.currentLeadingBidInCents || item.startingPriceInCents)}
+                        </div>
+                        <div className="text-[11px] text-slate-500 flex items-center gap-1">
+                          <Gavel className="w-3 h-3 text-slate-400" />
+                          <span>{item._count?.bids || 0} bids placed</span>
+                        </div>
+                      </td>
+
+                      <td className="py-3.5 px-4">
+                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+                          item.status === 'ACTIVE'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : item.status === 'COMPLETED'
+                            ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                            : item.status === 'CANCELLED' || item.status === 'REJECTED'
+                            ? 'bg-rose-50 text-rose-700 border-rose-200'
+                            : 'bg-slate-100 text-slate-700 border-slate-200'
+                        }`}>
+                          {item.status}
+                        </span>
+                      </td>
+
+                      <td className="py-3.5 px-4 text-xs text-slate-500">
+                        <div>Close: {new Date(item.closingTime).toLocaleDateString('en-IN')}</div>
+                        <div className="text-[11px] text-slate-400">
+                          Created: {new Date(item.createdAt).toLocaleDateString('en-IN')}
+                        </div>
+                      </td>
+
+                      <td className="py-3.5 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => handleOpenInspect(item.id)}
+                            className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
+                            title="Inspect Details"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+
+                          {item.status !== 'ACTIVE' && (
+                            <button
+                              onClick={() =>
+                                setModerateModal({
+                                  id: item.id,
+                                  targetStatus: 'ACTIVE',
+                                  title: item.title,
+                                })
+                              }
+                              className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
+                              title="Approve / Activate"
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                            </button>
+                          )}
+
+                          {item.status === 'ACTIVE' && (
+                            <button
+                              onClick={() =>
+                                setModerateModal({
+                                  id: item.id,
+                                  targetStatus: 'CANCELLED',
+                                  title: item.title,
+                                })
+                              }
+                              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                              title="Cancel / Reject Listing"
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </button>
+                          )}
+
+                          <button
+                            onClick={() => setDeleteModal({ id: item.id, title: item.title })}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                            title="Delete Listing"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
 
         {/* Pagination Bar */}

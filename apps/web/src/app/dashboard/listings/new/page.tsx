@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { PlusCircle, Upload, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ImageDropzone } from '@/components/ImageDropzone';
 
 export default function CreateListingPage() {
   const router = useRouter();
@@ -18,7 +19,7 @@ export default function CreateListingPage() {
   const [minIncrement, setMinIncrement] = useState('50');
   const [durationHours, setDurationHours] = useState('24');
   const [pickupLocation, setPickupLocation] = useState('Main Campus Library Entrance');
-  const [imageUrl, setImageUrl] = useState('https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=800&q=80');
+  const [imageUrl, setImageUrl] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -49,6 +50,10 @@ export default function CreateListingPage() {
     }
     if (title.trim().length < 3) {
       setErrorMsg('Title must be at least 3 characters.');
+      return;
+    }
+    if (!imageUrl || !imageUrl.trim()) {
+      setErrorMsg('Please upload or drag & drop a product photo.');
       return;
     }
 
@@ -227,16 +232,13 @@ export default function CreateListingPage() {
             />
           </div>
 
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Photo Image URL</label>
-            <input
-              type="url"
-              required
-              value={imageUrl}
-              onChange={(e) => setImageUrl(e.target.value)}
-              className="w-full px-4 py-2.5 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-mono"
-            />
-          </div>
+          {/* Drag & Drop Photo Uploader */}
+          <ImageDropzone
+            value={imageUrl}
+            onChange={setImageUrl}
+            label="Product Photo"
+            required
+          />
 
           <button
             type="submit"

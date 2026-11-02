@@ -41,7 +41,7 @@ export default function AdminSettingsPage() {
   const fetchSettings = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('campus_token');
+      const token = localStorage.getItem('campus_admin_token') || localStorage.getItem('campus_token');
       const res = await fetch(`${API_BASE}/admin/settings`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -69,7 +69,7 @@ export default function AdminSettingsPage() {
       setSaving(true);
       setSuccessMsg(null);
       setErrorMsg(null);
-      const token = localStorage.getItem('campus_token');
+      const token = localStorage.getItem('campus_admin_token') || localStorage.getItem('campus_token');
 
       const res = await fetch(`${API_BASE}/admin/settings`, {
         method: 'PATCH',

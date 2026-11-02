@@ -16,7 +16,8 @@ import {
   Bike,
   Shirt,
   Sparkles,
-  HelpCircle
+  HelpCircle,
+  X
 } from 'lucide-react';
 
 export default function AdminCategoriesPage() {
@@ -44,7 +45,7 @@ export default function AdminCategoriesPage() {
   const fetchCategories = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('campus_token');
+      const token = localStorage.getItem('campus_admin_token') || localStorage.getItem('campus_token');
       const res = await fetch(`${API_BASE}/admin/categories`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -62,6 +63,18 @@ export default function AdminCategoriesPage() {
   useEffect(() => {
     fetchCategories();
   }, []);
+
+  // Close modals on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (modalOpen) setModalOpen(false);
+        if (deleteTarget) setDeleteTarget(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [modalOpen, deleteTarget]);
 
   const handleOpenCreate = () => {
     setEditingId(null);
@@ -105,7 +118,7 @@ export default function AdminCategoriesPage() {
     try {
       setActionLoading(true);
       setErrorMsg(null);
-      const token = localStorage.getItem('campus_token');
+      const token = localStorage.getItem('campus_admin_token') || localStorage.getItem('campus_token');
       const url = editingId
         ? `${API_BASE}/admin/categories/${editingId}`
         : `${API_BASE}/admin/categories`;
@@ -138,7 +151,7 @@ export default function AdminCategoriesPage() {
     if (!deleteTarget) return;
     try {
       setActionLoading(true);
-      const token = localStorage.getItem('campus_token');
+      const token = localStorage.getItem('campus_admin_token') || localStorage.getItem('campus_token');
       const res = await fetch(`${API_BASE}/admin/categories/${deleteTarget.id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
@@ -261,9 +274,24 @@ export default function AdminCategoriesPage() {
 
       {/* Create / Edit Modal */}
       {modalOpen && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-slate-200">
-            <h3 className="text-lg font-bold text-slate-900 mb-1">
+        <div
+          className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-150"
+          onClick={() => setModalOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-slate-200 relative animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setModalOpen(false)}
+              className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition"
+              title="Close (Esc)"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <h3 className="text-lg font-bold text-slate-900 mb-1 pr-8">
               {editingId ? 'Edit Category' : 'Create New Category'}
             </h3>
             <p className="text-xs text-slate-500 mb-4">
@@ -342,8 +370,23 @@ export default function AdminCategoriesPage() {
 
       {/* Delete Category Modal */}
       {deleteTarget && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-slate-200">
+        <div
+          className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-150"
+          onClick={() => setDeleteTarget(null)}
+        >
+          <div
+            className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-slate-200 relative animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setDeleteTarget(null)}
+              className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition"
+              title="Close (Esc)"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
             <div className="w-12 h-12 bg-rose-50 text-rose-600 rounded-xl flex items-center justify-center mb-4">
               <AlertTriangle className="w-6 h-6" />
             </div>

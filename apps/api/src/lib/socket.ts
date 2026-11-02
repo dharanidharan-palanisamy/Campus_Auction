@@ -19,6 +19,15 @@ export const initSocket = (io: SocketIOServer) => {
     socket.on('join_user', (userId: string) => {
       socket.join(`user:${userId}`);
     });
+
+    // Admin telemetry room for real-time client events
+    socket.on('join_admin', () => {
+      socket.join('admin:telemetry');
+    });
+
+    socket.on('leave_admin', () => {
+      socket.leave('admin:telemetry');
+    });
   });
 };
 
@@ -35,5 +44,12 @@ export const emitAuctionUpdate = (auctionId: string, event: string, payload: any
 export const emitUserNotification = (userId: string, notification: any) => {
   if (ioInstance) {
     ioInstance.to(`user:${userId}`).emit('notification:created', notification);
+  }
+};
+
+export const emitAdminEvent = (event: string, payload: any) => {
+  if (ioInstance) {
+    ioInstance.to('admin:telemetry').emit(event, payload);
+    ioInstance.emit(`admin:${event}`, payload);
   }
 };

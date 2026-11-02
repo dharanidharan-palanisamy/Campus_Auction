@@ -38,7 +38,7 @@ export default function AdminNotificationsPage() {
   const fetchNotifications = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('campus_token');
+      const token = localStorage.getItem('campus_admin_token') || localStorage.getItem('campus_token');
       const res = await fetch(`${API_BASE}/admin/notifications`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -74,7 +74,7 @@ export default function AdminNotificationsPage() {
       setSending(true);
       setSuccessMessage(null);
       setErrorMessage(null);
-      const token = localStorage.getItem('campus_token');
+      const token = localStorage.getItem('campus_admin_token') || localStorage.getItem('campus_token');
 
       const res = await fetch(`${API_BASE}/admin/notifications`, {
         method: 'POST',

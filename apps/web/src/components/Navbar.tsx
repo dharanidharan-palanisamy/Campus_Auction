@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { 
   Gavel, 
@@ -18,15 +19,54 @@ import {
 } from 'lucide-react';
 
 export function Navbar() {
-  const { user, logout } = useAuth();
+  return (
+    <Suspense fallback={<header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200 h-16" />}>
+      <NavbarContent />
+    </Suspense>
+  );
+}
+
+function NavbarContent() {
+  const pathname = usePathname();
+  const { user, logout, isLoading } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Automatically close mobile menu whenever route changes
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
+
+  // Close on Escape key press
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMobileMenuOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Do not render student navbar in admin panel
+  if (pathname?.startsWith('/admin')) {
+    return null;
+  }
 
   return (
     <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2">
+          <Link
+            href="/"
+            onClick={() => setMobileMenuOpen(false)}
+            className="flex items-center gap-2"
+          >
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-blue-500 flex items-center justify-center text-white shadow-md shadow-indigo-200">
               <Gavel className="w-5 h-5" />
             </div>
@@ -49,46 +89,41 @@ export function Navbar() {
               <Sparkles className="w-4 h-4" />
               AI Assistant
             </Link>
-            {user?.role === 'ADMIN' && (
-              <Link href="/admin" className="text-sm font-semibold flex items-center gap-1 text-purple-700 bg-purple-50 px-2.5 py-1 rounded-md border border-purple-200 hover:bg-purple-100 transition">
-                <ShieldCheck className="w-4 h-4" />
-                Admin Panel
-              </Link>
-            )}
           </nav>
 
           {/* User Controls & Actions */}
           <div className="hidden md:flex items-center gap-3">
-
-            {user?.role !== 'ADMIN' && (
-              <Link
-                href="/dashboard/listings/new"
-                className="flex items-center gap-1.5 bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-sm hover:bg-indigo-700 transition"
-              >
-                <PlusCircle className="w-4 h-4" />
-                Create Listing
-              </Link>
-            )}
-
-            {user ? (
-              <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
+            {!mounted || isLoading ? (
+              <div className="h-8 w-28 bg-slate-100 rounded-xl animate-pulse" />
+            ) : user && user.role === 'STUDENT' ? (
+              <>
                 <Link
-                  href={user.role === 'ADMIN' ? '/admin' : '/dashboard'}
-                  className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-100 transition"
+                  href="/dashboard/listings/new"
+                  className="flex items-center gap-1.5 bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-sm hover:bg-indigo-700 transition"
                 >
-                  <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center font-bold text-xs text-slate-700">
-                    {user.campusAlias.substring(0, 2).toUpperCase()}
-                  </div>
-                  <span className="text-sm font-medium text-slate-800 hidden lg:inline">{user.campusAlias}</span>
+                  <PlusCircle className="w-4 h-4" />
+                  Create Listing
                 </Link>
-                <button
-                  onClick={logout}
-                  title="Logout"
-                  className="p-2 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                >
-                  <LogOut className="w-4 h-4" />
-                </button>
-              </div>
+
+                <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
+                  <Link
+                    href="/dashboard"
+                    className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-100 transition"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center font-bold text-xs text-slate-700">
+                      {user.campusAlias.substring(0, 2).toUpperCase()}
+                    </div>
+                    <span className="text-sm font-medium text-slate-800 hidden lg:inline">{user.campusAlias}</span>
+                  </Link>
+                  <button
+                    onClick={logout}
+                    title="Logout"
+                    className="p-2 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                </div>
+              </>
             ) : (
               <div className="flex items-center gap-2">
                 <Link
@@ -121,35 +156,76 @@ export function Navbar() {
 
       {/* Mobile Drawer */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-t border-slate-200 bg-white px-4 pt-3 pb-6 space-y-3">
-          <Link href="/auctions" className="block py-2 text-base font-semibold text-slate-700">
+        <div className="md:hidden border-t border-slate-200 bg-white px-4 pt-3 pb-6 space-y-3 shadow-lg">
+          <Link
+            href="/auctions"
+            onClick={() => setMobileMenuOpen(false)}
+            className="block py-2 text-base font-semibold text-slate-700 hover:text-indigo-600 transition"
+          >
             Browse Auctions
           </Link>
-          <Link href="/auctions?closing_soon=true" className="block py-2 text-base font-semibold text-amber-600">
+          <Link
+            href="/auctions?closing_soon=true"
+            onClick={() => setMobileMenuOpen(false)}
+            className="block py-2 text-base font-semibold text-amber-600 hover:text-amber-700 transition"
+          >
             Closing Soon
           </Link>
-          <Link href="/assistant" className="block py-2 text-base font-semibold text-indigo-600">
+          <Link
+            href="/assistant"
+            onClick={() => setMobileMenuOpen(false)}
+            className="block py-2 text-base font-semibold text-indigo-600 hover:text-indigo-700 transition"
+          >
             AI Assistant
           </Link>
-          {user?.role !== 'ADMIN' && (
-            <Link href="/dashboard/listings/new" className="block py-2 text-base font-semibold text-indigo-600">
-              + Create Listing
-            </Link>
-          )}
-          {!user && (
+          {!mounted || isLoading ? (
+            <div className="py-2 space-y-2 animate-pulse">
+              <div className="h-4 bg-slate-100 rounded w-28" />
+              <div className="h-4 bg-slate-100 rounded w-20" />
+            </div>
+          ) : user && user.role === 'STUDENT' ? (
             <>
-              <Link href="/register" className="block py-2 text-base font-semibold text-indigo-600">
+              <Link
+                href="/dashboard/listings/new"
+                onClick={() => setMobileMenuOpen(false)}
+                className="block py-2 text-base font-semibold text-indigo-600 hover:text-indigo-700 transition"
+              >
+                + Create Listing
+              </Link>
+              <Link
+                href="/dashboard"
+                onClick={() => setMobileMenuOpen(false)}
+                className="block py-2 text-base font-semibold text-slate-700 hover:text-slate-900 transition"
+              >
+                My Student Account
+              </Link>
+              <button
+                onClick={() => {
+                  logout();
+                  setMobileMenuOpen(false);
+                }}
+                className="block w-full text-left py-2 text-base font-semibold text-rose-600 hover:text-rose-700 transition"
+              >
+                Sign Out
+              </button>
+            </>
+          ) : (
+            <>
+              <Link
+                href="/register"
+                onClick={() => setMobileMenuOpen(false)}
+                className="block py-2 text-base font-semibold text-indigo-600 hover:text-indigo-700 transition"
+              >
                 Register
               </Link>
-              <Link href="/login" className="block py-2 text-base font-semibold text-slate-700">
+              <Link
+                href="/login"
+                onClick={() => setMobileMenuOpen(false)}
+                className="block py-2 text-base font-semibold text-slate-700 hover:text-slate-900 transition"
+              >
                 Log In
               </Link>
             </>
-          )}
-          {user?.role === 'ADMIN' && (
-            <Link href="/admin" className="block py-2 text-base font-semibold text-purple-700">
-              Admin Workspace
-            </Link>
           )}
         </div>
       )}

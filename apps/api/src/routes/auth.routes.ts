@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '../lib/prisma';
 import { generateToken, authenticateToken, AuthRequest } from '../middlewares/auth';
 import { registerSchema, loginSchema } from '@campus/shared';
+import { emitAdminEvent } from '../lib/socket';
 
 export const authRouter = Router();
 
@@ -51,6 +52,15 @@ authRouter.post('/register', async (req, res) => {
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       maxAge: 7 * 24 * 3600 * 1000
+    });
+
+    // Notify Admin Panel in real time
+    emitAdminEvent('student:registered', {
+      student: {
+        ...user,
+        verificationStatus: 'PENDING',
+        createdAt: new Date().toISOString()
+      }
     });
 
     return res.status(201).json({ success: true, user, token });

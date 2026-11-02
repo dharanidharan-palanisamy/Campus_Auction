@@ -97,12 +97,12 @@ function AdminSidebarContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { adminUser, adminLogout } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const handleLogout = () => {
-    logout();
+    adminLogout();
     router.push('/admin/login');
   };
 
@@ -141,36 +141,57 @@ function AdminSidebarContent() {
   const sidebarContent = (
     <div className="flex flex-col h-full bg-slate-900 text-slate-300">
       {/* Brand Header */}
-      <div className="h-16 px-4 flex items-center justify-between border-b border-slate-800 shrink-0">
-        <Link href="/admin" className="flex items-center gap-2.5 overflow-hidden">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center text-white shrink-0 shadow-md shadow-purple-950">
-            <Shield className="w-5 h-5" />
-          </div>
-          {!collapsed && (
-            <div className="flex flex-col min-w-0">
-              <span className="font-black text-sm text-white tracking-tight flex items-center gap-1.5">
-                CampusBid
-                <span className="text-[10px] font-bold px-1.5 py-0.2 bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded">
-                  Admin
+      <div className={`h-16 flex items-center border-b border-slate-800 shrink-0 ${
+        collapsed ? 'justify-center px-2' : 'justify-between px-4'
+      }`}>
+        {!collapsed ? (
+          <>
+            <Link href="/admin" className="flex items-center gap-2.5 overflow-hidden">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center text-white shrink-0 shadow-md shadow-purple-950">
+                <Shield className="w-5 h-5" />
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className="font-black text-sm text-white tracking-tight flex items-center gap-1.5">
+                  CampusBid
+                  <span className="text-[10px] font-bold px-1.5 py-0.2 bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded">
+                    Admin
+                  </span>
                 </span>
-              </span>
-              <span className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider truncate">
-                Operations Center
-              </span>
-            </div>
-          )}
-        </Link>
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="hidden lg:flex p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-        </button>
+                <span className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider truncate">
+                  Operations Center
+                </span>
+              </div>
+            </Link>
+            <button
+              onClick={() => setCollapsed(true)}
+              className="hidden lg:flex p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              title="Collapse sidebar"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+          </>
+        ) : (
+          <div className="flex items-center justify-center gap-1">
+            <Link
+              href="/admin"
+              className="w-8 h-8 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-purple-950 hover:scale-105 transition-transform"
+              title="CampusBid Admin Operations"
+            >
+              <Shield className="w-4 h-4" />
+            </Link>
+            <button
+              onClick={() => setCollapsed(false)}
+              className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              title="Expand sidebar"
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Nav List */}
-      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
+      <div className={`flex-1 overflow-y-auto space-y-6 ${collapsed ? 'px-1.5 py-4' : 'px-3 py-4'}`}>
         {navSections.map((section, idx) => (
           <div key={idx} className="space-y-1">
             {!collapsed ? (
@@ -178,9 +199,9 @@ function AdminSidebarContent() {
                 {section.title}
               </h4>
             ) : (
-              <div className="h-2" />
+              <div className="h-1.5" />
             )}
-            <div className="space-y-0.5">
+            <div className="space-y-1">
               {section.items.map((item) => {
                 const active = isActive(item.href);
                 const Icon = item.icon;
@@ -189,7 +210,11 @@ function AdminSidebarContent() {
                     key={item.href}
                     href={item.href}
                     onClick={() => setMobileOpen(false)}
-                    className={`flex items-center gap-3 px-2.5 py-2 rounded-xl text-xs font-semibold transition-all group ${
+                    className={`flex items-center rounded-xl text-xs font-semibold transition-all group ${
+                      collapsed
+                        ? 'w-10 h-10 mx-auto justify-center'
+                        : 'gap-3 px-2.5 py-2'
+                    } ${
                       active
                         ? 'bg-purple-600 text-white shadow-sm shadow-purple-900/50'
                         : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
@@ -207,36 +232,66 @@ function AdminSidebarContent() {
       </div>
 
       {/* Bottom Profile & Actions */}
-      <div className="p-3 border-t border-slate-800 shrink-0 space-y-2">
+      <div className={`border-t border-slate-800 shrink-0 ${collapsed ? 'p-2 space-y-2' : 'p-3 space-y-2'}`}>
         <Link
           href="/"
           target="_blank"
-          className="flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition"
+          className={`flex items-center rounded-xl text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition ${
+            collapsed ? 'w-10 h-10 mx-auto justify-center' : 'gap-2 px-2.5 py-2'
+          }`}
+          title="View Marketplace"
         >
           <ExternalLink className="w-4 h-4 shrink-0 text-slate-400" />
           {!collapsed && <span>View Marketplace</span>}
         </Link>
 
-        <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center justify-center font-bold text-xs shrink-0">
-              {user?.campusAlias?.substring(0, 2).toUpperCase() || 'AD'}
-            </div>
-            {!collapsed && (
-              <div className="min-w-0">
-                <span className="block text-xs font-bold text-white truncate">{user?.fullName || 'Administrator'}</span>
-                <span className="block text-[10px] text-slate-400 truncate">{user?.email || 'admin@campus.edu'}</span>
+        {collapsed ? (
+          <div className="pt-2 border-t border-slate-800 flex flex-col items-center gap-1.5">
+            <Link
+              href="/admin/profile"
+              onClick={() => setMobileOpen(false)}
+              className="w-10 h-10 rounded-xl hover:bg-slate-800/80 flex items-center justify-center transition group"
+              title="View Administrator Profile"
+            >
+              <div className="w-8 h-8 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center justify-center font-bold text-xs group-hover:border-purple-400 group-hover:scale-105 transition-all">
+                {adminUser?.campusAlias?.substring(0, 2).toUpperCase() || 'AD'}
               </div>
-            )}
+            </Link>
+            <button
+              onClick={handleLogout}
+              title="Sign Out"
+              className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
-          <button
-            onClick={handleLogout}
-            title="Sign Out"
-            className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition shrink-0"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
-        </div>
+        ) : (
+          <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
+            <Link
+              href="/admin/profile"
+              onClick={() => setMobileOpen(false)}
+              className="flex items-center gap-2.5 min-w-0 p-1.5 rounded-xl hover:bg-slate-800/80 transition flex-1 group"
+              title="View Administrator Profile"
+            >
+              <div className="w-8 h-8 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center justify-center font-bold text-xs shrink-0 group-hover:border-purple-400 group-hover:scale-105 transition-all">
+                {adminUser?.campusAlias?.substring(0, 2).toUpperCase() || 'AD'}
+              </div>
+              <div className="min-w-0 text-left">
+                <span className="block text-xs font-bold text-white truncate group-hover:text-purple-300 transition-colors">
+                  {adminUser?.fullName || 'Campus Administrator'}
+                </span>
+                <span className="block text-[10px] text-slate-400 truncate">{adminUser?.email || 'admin@campus.edu'}</span>
+              </div>
+            </Link>
+            <button
+              onClick={handleLogout}
+              title="Sign Out"
+              className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition shrink-0 ml-1"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

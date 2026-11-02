@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma';
-import { emitAuctionUpdate, emitUserNotification } from '../lib/socket';
+import { emitAuctionUpdate, emitUserNotification, emitAdminEvent } from '../lib/socket';
 
 export interface PlaceBidInput {
   listingId: string;
@@ -173,6 +173,23 @@ export class BiddingService {
           id: bid.id,
           amountInCents: bid.amountInCents,
           campusAlias: bid.bidder.campusAlias,
+          acceptedAt: bid.acceptedAt,
+          bidType: bid.bidType,
+        },
+        currentLeadingBidInCents: amountInCents,
+        extended,
+        newClosingTime,
+      });
+
+      // Broadcast to Admin Telemetry in real time
+      emitAdminEvent('bid:placed', {
+        listingId,
+        listingTitle: listing.title,
+        bid: {
+          id: bid.id,
+          amountInCents: bid.amountInCents,
+          bidderAlias: bid.bidder.campusAlias,
+          bidderId: bid.bidderId,
           acceptedAt: bid.acceptedAt,
           bidType: bid.bidType,
         },

@@ -1,7 +1,9 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { formatINR } from '@/lib/utils';
+import { useAdminSocket } from '@/hooks/useAdminSocket';
 import {
   Gavel,
   Search,
@@ -41,7 +43,7 @@ export default function AdminAuctionsPage() {
   const fetchAuctions = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('campus_token');
+      const token = localStorage.getItem('campus_admin_token') || localStorage.getItem('campus_token');
       const params = new URLSearchParams({
         page: page.toString(),
         limit: limit.toString(),
@@ -71,6 +73,33 @@ export default function AdminAuctionsPage() {
     fetchAuctions();
   }, [page, statusFilter]);
 
+  // Real-time dynamic updates when client places bids or creates listings
+  const handleLiveEvent = useCallback((event: any) => {
+    if (
+      event.type === 'BID_PLACED' ||
+      event.type === 'LISTING_CREATED' ||
+      event.type === 'LISTING_MODERATED'
+    ) {
+      fetchAuctions();
+    }
+  }, [page, statusFilter]);
+
+  useAdminSocket(handleLiveEvent);
+
+  // Close timeline modal on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (selectedAuctionId) {
+          setSelectedAuctionId(null);
+          setTimelineData(null);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedAuctionId]);
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setPage(1);
@@ -81,7 +110,7 @@ export default function AdminAuctionsPage() {
     try {
       setSelectedAuctionId(id);
       setTimelineLoading(true);
-      const token = localStorage.getItem('campus_token');
+      const token = localStorage.getItem('campus_admin_token') || localStorage.getItem('campus_token');
       const res = await fetch(`${API_BASE}/admin/auctions/${id}/events`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -175,8 +204,87 @@ export default function AdminAuctionsPage() {
             <p className="font-semibold text-slate-600">No auctions match the selected filter.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+          <>
+            {/* 1. Mobile Responsive Cards (< 768px) */}
+            <div className="md:hidden divide-y divide-slate-100">
+              {auctions.map((auc) => {
+                const leadingBid = auc.bids?.[0];
+                const isLive = auc.status === 'ACTIVE' && new Date(auc.closingTime) > new Date();
+
+                return (
+                  <div key={auc.id} className="p-4 space-y-3 hover:bg-slate-50/60 transition">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <h4 className="font-bold text-sm text-slate-900 truncate">{auc.title}</h4>
+                        <div className="flex items-center gap-2 text-xs text-slate-400 mt-0.5">
+                          <span>@{auc.seller?.campusAlias}</span>
+                          <span>•</span>
+                          <span>{auc.category?.name || 'Item'}</span>
+                        </div>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${
+                        isLive
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : auc.status === 'COMPLETED'
+                          ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                          : 'bg-slate-100 text-slate-700 border-slate-200'
+                      }`}>
+                        {isLive ? 'LIVE' : auc.status}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block">Leading Bid</span>
+                        <span className="font-mono font-bold text-indigo-600 text-sm">
+                          {formatINR(auc.currentLeadingBidInCents || auc.startingPriceInCents)}
+                        </span>
+                        {leadingBid && (
+                          <span className="text-[10px] text-slate-500 block truncate">
+                            by @{leadingBid.bidder?.campusAlias}
+                          </span>
+                        )}
+                      </div>
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block">Bids Placed</span>
+                        <span className="font-mono text-slate-700 font-semibold">
+                          {auc._count?.bids || 0} bids
+                        </span>
+                        <span className="text-[10px] text-slate-400 block">
+                          Closes: {new Date(auc.closingTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        ID: {auc.id.slice(0, 8)}...
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => handleOpenTimeline(auc.id)}
+                          className="px-2.5 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 border border-indigo-100 rounded-lg transition inline-flex items-center gap-1"
+                        >
+                          <Activity className="w-3.5 h-3.5" /> Events
+                        </button>
+                        <Link
+                          href={`/auctions/${auc.id}`}
+                          target="_blank"
+                          className="p-1.5 text-slate-400 hover:text-slate-700 border border-slate-200 rounded-lg transition"
+                          title="Open live listing"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* 2. Tablet, Laptop & Desktop Table (>= 768px) */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-[950px]">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50/75 text-xs font-bold text-slate-500 uppercase tracking-wider">
                   <th className="py-3 px-4">Auction Item</th>
@@ -275,7 +383,8 @@ export default function AdminAuctionsPage() {
               </tbody>
             </table>
           </div>
-        )}
+        </>
+      )}
 
         {/* Pagination Bar */}
         <div className="p-4 border-t border-slate-200 flex items-center justify-between">
