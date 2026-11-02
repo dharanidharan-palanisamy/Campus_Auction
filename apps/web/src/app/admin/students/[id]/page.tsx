@@ -977,3 +977,4 @@ export default function StudentDetailPage({ params }: StudentDetailProps) {
     </div>
   );
 }
+
