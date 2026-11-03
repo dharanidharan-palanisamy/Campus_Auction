@@ -178,51 +178,69 @@ export default function AdminDashboardPage() {
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between text-slate-400">
-              <span className="text-[11px] font-bold uppercase tracking-wider">Total Students</span>
-              <Users className="w-4 h-4 text-purple-600" />
+          <Link
+            href="/admin/students"
+            className="group bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-purple-300 transition-all duration-200 cursor-pointer block"
+          >
+            <div className="flex items-center justify-between text-slate-400 group-hover:text-purple-600 transition">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 group-hover:text-purple-700">Total Students</span>
+              <Users className="w-4 h-4 text-purple-600 group-hover:scale-110 transition-transform" />
             </div>
-            <div className="mt-2 text-2xl sm:text-3xl font-black text-slate-900">
+            <div className="mt-2 text-2xl sm:text-3xl font-black text-slate-900 group-hover:text-purple-900 transition">
               {stats?.totalStudents ?? 0}
             </div>
-            <span className="text-[11px] text-slate-400 mt-1 block">Registered on platform</span>
-          </div>
+            <span className="text-[11px] text-slate-400 group-hover:text-slate-600 mt-1 block transition">
+              Registered on platform &rarr;
+            </span>
+          </Link>
 
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between text-slate-400">
-              <span className="text-[11px] font-bold uppercase tracking-wider">Verified Students</span>
-              <UserCheck className="w-4 h-4 text-emerald-600" />
+          <Link
+            href="/admin/students?status=VERIFIED"
+            className="group bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-emerald-300 transition-all duration-200 cursor-pointer block"
+          >
+            <div className="flex items-center justify-between text-slate-400 group-hover:text-emerald-600 transition">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 group-hover:text-emerald-700">Verified Students</span>
+              <UserCheck className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition-transform" />
             </div>
-            <div className="mt-2 text-2xl sm:text-3xl font-black text-emerald-600">
+            <div className="mt-2 text-2xl sm:text-3xl font-black text-emerald-600 group-hover:text-emerald-700 transition">
               {stats?.verifiedStudents ?? 0}
             </div>
             <span className="text-[11px] text-emerald-600 font-semibold mt-1 block">
-              {stats?.totalStudents ? Math.round((stats.verifiedStudents / stats.totalStudents) * 100) : 0}% verification rate
+              {stats?.totalStudents ? Math.round((stats.verifiedStudents / stats.totalStudents) * 100) : 0}% verification rate &rarr;
             </span>
-          </div>
+          </Link>
 
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between text-slate-400">
-              <span className="text-[11px] font-bold uppercase tracking-wider">Pending Review</span>
-              <Clock className="w-4 h-4 text-amber-600" />
+          <Link
+            href="/admin/students?status=PENDING"
+            className="group bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-amber-300 transition-all duration-200 cursor-pointer block"
+          >
+            <div className="flex items-center justify-between text-slate-400 group-hover:text-amber-600 transition">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 group-hover:text-amber-700">Pending Review</span>
+              <Clock className="w-4 h-4 text-amber-600 group-hover:scale-110 transition-transform" />
             </div>
-            <div className="mt-2 text-2xl sm:text-3xl font-black text-amber-600">
+            <div className="mt-2 text-2xl sm:text-3xl font-black text-amber-600 group-hover:text-amber-700 transition">
               {stats?.pendingVerification ?? 0}
             </div>
-            <span className="text-[11px] text-slate-400 mt-1 block">Awaiting admin sign-off</span>
-          </div>
+            <span className="text-[11px] text-slate-400 group-hover:text-amber-700 mt-1 block transition">
+              Awaiting admin sign-off &rarr;
+            </span>
+          </Link>
 
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between text-slate-400">
-              <span className="text-[11px] font-bold uppercase tracking-wider">Suspended</span>
-              <Ban className="w-4 h-4 text-rose-600" />
+          <Link
+            href="/admin/students?status=SUSPENDED"
+            className="group bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-rose-300 transition-all duration-200 cursor-pointer block"
+          >
+            <div className="flex items-center justify-between text-slate-400 group-hover:text-rose-600 transition">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 group-hover:text-rose-700">Suspended</span>
+              <Ban className="w-4 h-4 text-rose-600 group-hover:scale-110 transition-transform" />
             </div>
-            <div className="mt-2 text-2xl sm:text-3xl font-black text-rose-600">
+            <div className="mt-2 text-2xl sm:text-3xl font-black text-rose-600 group-hover:text-rose-700 transition">
               {stats?.suspendedStudents ?? 0}
             </div>
-            <span className="text-[11px] text-slate-400 mt-1 block">Restricted from bidding</span>
-          </div>
+            <span className="text-[11px] text-slate-400 group-hover:text-rose-600 mt-1 block transition">
+              Restricted from bidding &rarr;
+            </span>
+          </Link>
         </div>
       </div>
 
@@ -238,53 +256,69 @@ export default function AdminDashboardPage() {
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between text-slate-400">
-              <span className="text-[11px] font-bold uppercase tracking-wider">Live Auctions</span>
-              <Gavel className="w-4 h-4 text-indigo-600" />
+          <Link
+            href="/admin/auctions?status=LIVE"
+            className="group bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-indigo-300 transition-all duration-200 cursor-pointer block"
+          >
+            <div className="flex items-center justify-between text-slate-400 group-hover:text-indigo-600 transition">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 group-hover:text-indigo-700">Live Auctions</span>
+              <Gavel className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
             </div>
-            <div className="mt-2 text-2xl sm:text-3xl font-black text-indigo-600">
+            <div className="mt-2 text-2xl sm:text-3xl font-black text-indigo-600 group-hover:text-indigo-700 transition">
               {stats?.activeAuctions ?? 0}
             </div>
-            <span className="text-[11px] text-slate-400 mt-1 block">
-              {stats?.closingSoonAuctions ?? 0} closing in &lt;3h
+            <span className="text-[11px] text-slate-400 group-hover:text-indigo-600 mt-1 block transition">
+              {stats?.closingSoonAuctions ?? 0} closing in &lt;3h &rarr;
             </span>
-          </div>
+          </Link>
 
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between text-slate-400">
-              <span className="text-[11px] font-bold uppercase tracking-wider">Completed Sales</span>
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+          <Link
+            href="/admin/listings?status=COMPLETED"
+            className="group bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-emerald-300 transition-all duration-200 cursor-pointer block"
+          >
+            <div className="flex items-center justify-between text-slate-400 group-hover:text-emerald-600 transition">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 group-hover:text-emerald-700">Completed Sales</span>
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition-transform" />
             </div>
-            <div className="mt-2 text-2xl sm:text-3xl font-black text-slate-900">
+            <div className="mt-2 text-2xl sm:text-3xl font-black text-slate-900 group-hover:text-emerald-800 transition">
               {stats?.completedAuctions ?? 0}
             </div>
-            <span className="text-[11px] text-slate-400 mt-1 block">
-              {stats?.unsoldAuctions ?? 0} ended unsold
+            <span className="text-[11px] text-slate-400 group-hover:text-emerald-600 mt-1 block transition">
+              {stats?.unsoldAuctions ?? 0} ended unsold &rarr;
             </span>
-          </div>
+          </Link>
 
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between text-slate-400">
-              <span className="text-[11px] font-bold uppercase tracking-wider">Accepted Bids</span>
-              <ShoppingBag className="w-4 h-4 text-blue-600" />
+          <Link
+            href="/admin/bids"
+            className="group bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-200 cursor-pointer block"
+          >
+            <div className="flex items-center justify-between text-slate-400 group-hover:text-blue-600 transition">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 group-hover:text-blue-700">Accepted Bids</span>
+              <ShoppingBag className="w-4 h-4 text-blue-600 group-hover:scale-110 transition-transform" />
             </div>
-            <div className="mt-2 text-2xl sm:text-3xl font-black text-slate-900">
+            <div className="mt-2 text-2xl sm:text-3xl font-black text-slate-900 group-hover:text-blue-900 transition">
               {stats?.totalBids ?? 0}
             </div>
-            <span className="text-[11px] text-slate-400 mt-1 block">Immutable bid records</span>
-          </div>
+            <span className="text-[11px] text-slate-400 group-hover:text-blue-600 mt-1 block transition">
+              Immutable bid records &rarr;
+            </span>
+          </Link>
 
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between text-slate-400">
-              <span className="text-[11px] font-bold uppercase tracking-wider">Sales Volume</span>
-              <TrendingUp className="w-4 h-4 text-purple-600" />
+          <Link
+            href="/admin/reports"
+            className="group bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-purple-300 transition-all duration-200 cursor-pointer block"
+          >
+            <div className="flex items-center justify-between text-slate-400 group-hover:text-purple-600 transition">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 group-hover:text-purple-700">Sales Volume</span>
+              <TrendingUp className="w-4 h-4 text-purple-600 group-hover:scale-110 transition-transform" />
             </div>
-            <div className="mt-2 text-2xl sm:text-3xl font-black text-purple-700">
+            <div className="mt-2 text-2xl sm:text-3xl font-black text-purple-700 group-hover:text-purple-900 transition">
               {stats ? formatINR(stats.totalVolumeInCents) : '₹0'}
             </div>
-            <span className="text-[11px] text-slate-400 mt-1 block">Completed handovers</span>
-          </div>
+            <span className="text-[11px] text-slate-400 group-hover:text-purple-600 mt-1 block transition">
+              Completed handovers &rarr;
+            </span>
+          </Link>
         </div>
       </div>
 

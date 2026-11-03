@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, Suspense } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useAdminSocket } from '@/hooks/useAdminSocket';
 import {
   Package,
@@ -24,6 +25,17 @@ import {
 } from 'lucide-react';
 
 export default function AdminListingsPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-slate-400">Loading listings directory...</div>}>
+      <AdminListingsContent />
+    </Suspense>
+  );
+}
+
+function AdminListingsContent() {
+  const searchParams = useSearchParams();
+  const initialStatus = searchParams.get('status') || 'ALL';
+
   const [listings, setListings] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
@@ -34,8 +46,16 @@ export default function AdminListingsPage() {
 
   // Filters
   const [search, setSearch] = useState('');
-  const [statusTab, setStatusTab] = useState('ALL');
+  const [statusTab, setStatusTab] = useState(initialStatus);
   const [selectedCategory, setSelectedCategory] = useState('');
+
+  useEffect(() => {
+    const s = searchParams.get('status');
+    if (s) {
+      setStatusTab(s);
+      setPage(1);
+    }
+  }, [searchParams]);
 
   // Modals state
   const [inspectListing, setInspectListing] = useState<any | null>(null);

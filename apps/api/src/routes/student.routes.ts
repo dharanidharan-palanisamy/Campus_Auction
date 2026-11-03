@@ -1,5 +1,12 @@
 import { Router } from 'express';
-import { prisma } from '../lib/prisma';
+import mongoose from 'mongoose';
+import {
+  AuctionListing,
+  Bid,
+  AuctionOutcome,
+  SavedListing,
+  Notification,
+} from '../models';
 import { authenticateToken, AuthRequest } from '../middlewares/auth';
 
 export const studentRouter = Router();
@@ -10,61 +17,61 @@ studentRouter.use(authenticateToken);
 studentRouter.get('/dashboard', async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.id;
+    const userObjectId = new mongoose.Types.ObjectId(userId);
 
     const [
-      activeListings,
-      activeBids,
-      leadingBids,
-      wonAuctions,
+      activeListingsRaw,
+      userBidsListings,
+      wonOutcomes,
       savedItemsCount,
-      unreadNotificationsCount
+      unreadNotificationsCount,
     ] = await Promise.all([
       // Seller: active listings
-      prisma.auctionListing.findMany({
-        where: { sellerId: userId, status: 'ACTIVE' },
-        include: { _count: { select: { bids: true } } }
-      }),
-      // Buyer: listings where user has placed a bid
-      prisma.bid.findMany({
-        where: { bidderId: userId },
-        distinct: ['listingId'],
-        include: {
-          listing: {
-            include: {
-              category: true,
-              bids: { orderBy: { amountInCents: 'desc' }, take: 1 }
-            }
-          }
-        }
-      }),
-      // Leading: auctions where user is currently leading
-      prisma.auctionListing.count({
-        where: {
-          status: 'ACTIVE',
-          bids: { some: { bidderId: userId } },
-          // checked via latest leading bid id or bidder
-        }
-      }),
+      AuctionListing.find({ sellerId: userObjectId, status: 'ACTIVE' }).lean(),
+      // Buyer: distinct listings where user placed a bid
+      Bid.distinct('listingId', { bidderId: userObjectId }),
       // Provisional wins / won outcomes
-      prisma.auctionOutcome.findMany({
-        where: { winnerId: userId },
-        include: { listing: { include: { seller: { select: { campusAlias: true } } } } }
-      }),
+      AuctionOutcome.find({ winnerId: userObjectId })
+        .populate({
+          path: 'listing',
+          populate: { path: 'seller', select: 'campusAlias' },
+        })
+        .lean(),
       // Saved listings
-      prisma.savedListing.count({ where: { userId } }),
+      SavedListing.countDocuments({ userId: userObjectId }),
       // Unread notifications
-      prisma.notification.count({ where: { userId, isRead: false } })
+      Notification.countDocuments({ userId: userObjectId, isRead: false }),
     ]);
+
+    // Attach bid counts for seller's active listings
+    const listingIds = activeListingsRaw.map((l: any) => l._id);
+    const bidCounts = await Bid.aggregate([
+      { $match: { listingId: { $in: listingIds } } },
+      { $group: { _id: '$listingId', count: { $sum: 1 } } },
+    ]);
+    const bidCountMap = new Map<string, number>();
+    bidCounts.forEach((b: any) => bidCountMap.set(b._id.toString(), b.count));
+
+    const activeListings = activeListingsRaw.map((l: any) => ({
+      ...l,
+      id: l._id.toString(),
+      _count: { bids: bidCountMap.get(l._id.toString()) || 0 },
+    }));
+
+    const wonAuctions = wonOutcomes.map((w: any) => ({
+      ...w,
+      id: w._id.toString(),
+    }));
 
     return res.json({
       success: true,
       data: {
         activeListings,
-        activeBidsCount: activeBids.length,
+        activeBidsCount: userBidsListings.length,
         wonAuctions,
         savedItemsCount,
-        unreadNotificationsCount
-      }
+        unreadNotificationsCount,
+      },
     });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
@@ -74,12 +81,18 @@ studentRouter.get('/dashboard', async (req: AuthRequest, res) => {
 // 2. Notifications
 studentRouter.get('/notifications', async (req: AuthRequest, res) => {
   try {
-    const notifications = await prisma.notification.findMany({
-      where: { userId: req.user!.id },
-      orderBy: { createdAt: 'desc' },
-      take: 50
-    });
-    return res.json({ success: true, data: notifications });
+    const userObjectId = new mongoose.Types.ObjectId(req.user!.id);
+    const notifications = await Notification.find({ userId: userObjectId })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .lean();
+
+    const formatted = notifications.map((n: any) => ({
+      ...n,
+      id: n._id.toString(),
+    }));
+
+    return res.json({ success: true, data: formatted });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -87,11 +100,18 @@ studentRouter.get('/notifications', async (req: AuthRequest, res) => {
 
 studentRouter.patch('/notifications/:id/read', async (req: AuthRequest, res) => {
   try {
-    const notification = await prisma.notification.update({
-      where: { id: req.params.id, userId: req.user!.id },
-      data: { isRead: true }
-    });
-    return res.json({ success: true, data: notification });
+    const userObjectId = new mongoose.Types.ObjectId(req.user!.id);
+    const notification = await Notification.findOneAndUpdate(
+      { _id: req.params.id, userId: userObjectId },
+      { isRead: true, readAt: new Date() },
+      { new: true }
+    );
+
+    if (!notification) {
+      return res.status(404).json({ success: false, message: 'Notification not found' });
+    }
+
+    return res.json({ success: true, data: notification.toJSON() });
   } catch (error: any) {
     return res.status(400).json({ success: false, message: error.message });
   }
@@ -100,21 +120,20 @@ studentRouter.patch('/notifications/:id/read', async (req: AuthRequest, res) => 
 // 3. Saved Listings
 studentRouter.get('/saved-listings', async (req: AuthRequest, res) => {
   try {
-    const saved = await prisma.savedListing.findMany({
-      where: { userId: req.user!.id },
-      include: {
-        user: false,
-        // Using direct query for listings
-      }
-    });
+    const userObjectId = new mongoose.Types.ObjectId(req.user!.id);
+    const saved = await SavedListing.find({ userId: userObjectId }).lean();
+    const listingIds = saved.map((s: any) => s.listingId);
 
-    const listingIds = saved.map(s => s.listingId);
-    const listings = await prisma.auctionListing.findMany({
-      where: { id: { in: listingIds } },
-      include: { images: true, category: true }
-    });
+    const listings = await AuctionListing.find({ _id: { $in: listingIds } })
+      .populate('category')
+      .lean();
 
-    return res.json({ success: true, data: listings });
+    const formatted = listings.map((l: any) => ({
+      ...l,
+      id: l._id.toString(),
+    }));
+
+    return res.json({ success: true, data: formatted });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -122,17 +141,21 @@ studentRouter.get('/saved-listings', async (req: AuthRequest, res) => {
 
 studentRouter.post('/saved-listings/:listingId', async (req: AuthRequest, res) => {
   try {
-    const { listingId } = req.params;
-    const existing = await prisma.savedListing.findUnique({
-      where: { userId_listingId: { userId: req.user!.id, listingId } }
+    const userObjectId = new mongoose.Types.ObjectId(req.user!.id);
+    const listingObjectId = new mongoose.Types.ObjectId(req.params.listingId);
+
+    const existing = await SavedListing.findOne({
+      userId: userObjectId,
+      listingId: listingObjectId,
     });
 
     if (existing) {
-      await prisma.savedListing.delete({ where: { id: existing.id } });
+      await SavedListing.findByIdAndDelete(existing._id);
       return res.json({ success: true, saved: false, message: 'Removed from saved listings' });
     } else {
-      await prisma.savedListing.create({
-        data: { userId: req.user!.id, listingId }
+      await SavedListing.create({
+        userId: userObjectId,
+        listingId: listingObjectId,
       });
       return res.json({ success: true, saved: true, message: 'Saved to wishlist' });
     }

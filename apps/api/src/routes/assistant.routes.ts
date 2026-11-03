@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { prisma } from '../lib/prisma';
+import { AuctionListing } from '../models';
 import { authenticateToken, AuthRequest } from '../middlewares/auth';
 import { BiddingService } from '../services/bidding.service';
 
@@ -29,25 +29,23 @@ assistantRouter.post('/chat', authenticateToken, async (req: AuthRequest, res) =
       const amount = parseInt(bidMatch[1], 10);
       const query = bidMatch[2].trim();
 
-      const listing = await prisma.auctionListing.findFirst({
-        where: {
-          title: { contains: query },
-          status: 'ACTIVE',
-          closingTime: { gt: new Date() }
-        },
-        include: { seller: { select: { campusAlias: true } } }
-      });
+      const listing = await AuctionListing.findOne({
+        title: { $regex: query, $options: 'i' },
+        status: 'ACTIVE',
+        closingTime: { $gt: new Date() },
+      }).populate('seller', 'campusAlias');
 
       if (!listing) {
         return res.json({
           success: true,
-          reply: `I couldn't find an active auction matching "${query}" to prepare your bid. Try checking the title or browsing categories.`
+          reply: `I couldn't find an active auction matching "${query}" to prepare your bid. Try checking the title or browsing categories.`,
         });
       }
 
-      const minNext = listing.currentLeadingBidInCents === 0
-        ? listing.startingPriceInCents
-        : listing.currentLeadingBidInCents + listing.minIncrementInCents;
+      const minNext =
+        listing.currentLeadingBidInCents === 0
+          ? listing.startingPriceInCents
+          : listing.currentLeadingBidInCents + listing.minIncrementInCents;
 
       const proposedInCents = amount * 100;
 
@@ -56,31 +54,32 @@ assistantRouter.post('/chat', authenticateToken, async (req: AuthRequest, res) =
         reply: `I have prepared a bid proposal for **${listing.title}**. Please review the details below and confirm to authorize submission:`,
         proposal: {
           action: 'PLACE_BID',
-          listingId: listing.id,
+          listingId: listing._id.toString(),
           title: listing.title,
           currentLeadingBid: listing.currentLeadingBidInCents,
           minAcceptable: minNext,
           proposedAmountInCents: proposedInCents,
           isEligible: proposedInCents >= minNext,
-          requiresConfirmation: true
-        }
+          requiresConfirmation: true,
+        },
       });
     }
 
     // Intent: Find / Search items with budget and category awareness
-    const isSearchIntent = lower.includes('find') || 
-                           lower.includes('show') || 
-                           lower.includes('search') || 
-                           lower.includes('get') ||
-                           lower.includes('bicycle') || 
-                           lower.includes('bike') || 
-                           lower.includes('cycle') || 
-                           lower.includes('calculator') || 
-                           lower.includes('book') || 
-                           lower.includes('keyboard') ||
-                           lower.includes('laptop') ||
-                           lower.includes('under') ||
-                           lower.includes('below');
+    const isSearchIntent =
+      lower.includes('find') ||
+      lower.includes('show') ||
+      lower.includes('search') ||
+      lower.includes('get') ||
+      lower.includes('bicycle') ||
+      lower.includes('bike') ||
+      lower.includes('cycle') ||
+      lower.includes('calculator') ||
+      lower.includes('book') ||
+      lower.includes('keyboard') ||
+      lower.includes('laptop') ||
+      lower.includes('under') ||
+      lower.includes('below');
 
     if (isSearchIntent) {
       // Extract price budget (e.g. "under ₹2,000", "below 3000", "under 1500")
@@ -101,16 +100,15 @@ assistantRouter.post('/chat', authenticateToken, async (req: AuthRequest, res) =
       if (lower.includes('keyboard') || lower.includes('rgb')) searchTerms.push('keyboard');
       if (lower.includes('drafter')) searchTerms.push('drafter');
 
-      const allActive = await prisma.auctionListing.findMany({
-        where: { status: 'ACTIVE', closingTime: { gt: new Date() } },
-        include: { category: true }
-      });
+      const allActive = await AuctionListing.find({
+        status: 'ACTIVE',
+        closingTime: { $gt: new Date() },
+      }).populate('category');
 
       // Filter matches by term and budget
-      const matches = allActive.filter((listing) => {
-        const currentPrice = listing.currentLeadingBidInCents > 0 
-          ? listing.currentLeadingBidInCents 
-          : listing.startingPriceInCents;
+      const matches = allActive.filter((listing: any) => {
+        const currentPrice =
+          listing.currentLeadingBidInCents > 0 ? listing.currentLeadingBidInCents : listing.startingPriceInCents;
 
         // Check budget if requested
         if (maxBudgetInCents !== null && currentPrice > maxBudgetInCents) {
@@ -119,7 +117,8 @@ assistantRouter.post('/chat', authenticateToken, async (req: AuthRequest, res) =
 
         // Check keyword matches if any were identified
         if (searchTerms.length > 0) {
-          const content = `${listing.title} ${listing.description} ${listing.category.name}`.toLowerCase();
+          const categoryName = listing.category?.name || '';
+          const content = `${listing.title} ${listing.description} ${categoryName}`.toLowerCase();
           return searchTerms.some((st) => content.includes(st));
         }
 
@@ -127,38 +126,40 @@ assistantRouter.post('/chat', authenticateToken, async (req: AuthRequest, res) =
       });
 
       if (matches.length === 0) {
-        // If no items matched strictly within budget, check if items exist above budget to give a helpful suggestion
-        const availableItems = allActive.filter((l) => {
+        const availableItems = allActive.filter((l: any) => {
           if (searchTerms.length > 0) {
-            const content = `${l.title} ${l.description} ${l.category.name}`.toLowerCase();
+            const categoryName = l.category?.name || '';
+            const content = `${l.title} ${l.description} ${categoryName}`.toLowerCase();
             return searchTerms.some((st) => content.includes(st));
           }
           return false;
         });
 
         if (availableItems.length > 0 && maxBudgetInCents !== null) {
-          const item = availableItems[0];
+          const item = availableItems[0] as any;
           const curr = item.currentLeadingBidInCents > 0 ? item.currentLeadingBidInCents : item.startingPriceInCents;
           return res.json({
             success: true,
-            reply: `I found **${item.title}** (${item.category.name}), but its current leading bid is **₹${(curr / 100).toFixed(0)}**, which exceeds your budget of ₹${(maxBudgetInCents / 100).toFixed(0)}. Would you like me to prepare a bid proposal for ₹${(curr / 100).toFixed(0)}, or notify you when a cheaper listing appears?`
+            reply: `I found **${item.title}** (${item.category?.name || 'General'}), but its current leading bid is **₹${(curr / 100).toFixed(0)}**, which exceeds your budget of ₹${(maxBudgetInCents / 100).toFixed(0)}. Would you like me to prepare a bid proposal for ₹${(curr / 100).toFixed(0)}, or notify you when a cheaper listing appears?`,
           });
         }
 
         return res.json({
           success: true,
-          reply: "I couldn't find any active listings matching your query right now. Would you like to save this as a saved search to get notified when someone lists it?"
+          reply: "I couldn't find any active listings matching your query right now. Would you like to save this as a saved search to get notified when someone lists it?",
         });
       }
 
-      const summaries = matches.map((l) => {
-        const price = l.currentLeadingBidInCents > 0 ? l.currentLeadingBidInCents : l.startingPriceInCents;
-        return `- **${l.title}** (${l.category.name}): Current price **₹${(price / 100).toFixed(0)}**, Condition: ${l.condition}`;
-      }).join('\n');
+      const summaries = matches
+        .map((l: any) => {
+          const price = l.currentLeadingBidInCents > 0 ? l.currentLeadingBidInCents : l.startingPriceInCents;
+          return `- **${l.title}** (${l.category?.name || 'General'}): Current price **₹${(price / 100).toFixed(0)}**, Condition: ${l.condition}`;
+        })
+        .join('\n');
 
       return res.json({
         success: true,
-        reply: `Here are the matching campus auctions I found:\n\n${summaries}\n\nWould you like me to prepare a bid proposal for any of these?`
+        reply: `Here are the matching campus auctions I found:\n\n${summaries}\n\nWould you like me to prepare a bid proposal for any of these?`,
       });
     }
 
@@ -168,9 +169,8 @@ assistantRouter.post('/chat', authenticateToken, async (req: AuthRequest, res) =
 - Find bicycles, calculators, or study books under your budget
 - Check closing times and leading bids
 - Prepare safe bid proposals with explicit confirmation
-How can I assist you with your campus deals today?`
+How can I assist you with your campus deals today?`,
     });
-
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -188,13 +188,13 @@ assistantRouter.post('/confirm', authenticateToken, async (req: AuthRequest, res
       listingId,
       bidderId: req.user!.id,
       amountInCents: Number(amountInCents),
-      bidType: 'AI_CONFIRMED'
+      bidType: 'AI_CONFIRMED',
     });
 
     return res.json({
       success: true,
       message: `Confirmed! Your bid of ₹${(amountInCents / 100).toFixed(2)} was successfully accepted.`,
-      result
+      result,
     });
   } catch (error: any) {
     return res.status(400).json({ success: false, message: error.message });

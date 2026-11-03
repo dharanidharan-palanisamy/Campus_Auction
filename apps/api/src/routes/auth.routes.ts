@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
-import { prisma } from '../lib/prisma';
+import { User } from '../models';
 import { generateToken, authenticateToken, AuthRequest } from '../middlewares/auth';
 import { registerSchema, loginSchema } from '@campus/shared';
 import { emitAdminEvent } from '../lib/socket';
@@ -11,13 +11,11 @@ authRouter.post('/register', async (req, res) => {
   try {
     const validated = registerSchema.parse(req.body);
 
-    const existingUser = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { email: validated.email },
-          { studentId: validated.studentId }
-        ]
-      }
+    const existingUser = await User.findOne({
+      $or: [
+        { email: validated.email.toLowerCase() },
+        { studentId: validated.studentId },
+      ],
     });
 
     if (existingUser) {
@@ -26,46 +24,46 @@ authRouter.post('/register', async (req, res) => {
 
     const passwordHash = await bcrypt.hash(validated.password, 10);
 
-    const user = await prisma.user.create({
-      data: {
-        email: validated.email,
-        passwordHash,
-        fullName: validated.fullName,
-        campusAlias: validated.campusAlias,
-        studentId: validated.studentId,
-        role: 'STUDENT',
-        isEmailVerified: true
-      },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        campusAlias: true,
-        studentId: true,
-        role: true
-      }
+    const user = await User.create({
+      email: validated.email.toLowerCase(),
+      passwordHash,
+      fullName: validated.fullName,
+      campusAlias: validated.campusAlias,
+      studentId: validated.studentId,
+      role: 'STUDENT',
+      isEmailVerified: true,
+      verificationStatus: 'PENDING',
+      accountStatus: 'ACTIVE',
     });
 
-    const token = generateToken(user);
+    const userPayload = {
+      id: user._id.toString(),
+      email: user.email,
+      fullName: user.fullName,
+      campusAlias: user.campusAlias,
+      studentId: user.studentId,
+      role: user.role,
+    };
+
+    const token = generateToken(userPayload);
     res.cookie('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 7 * 24 * 3600 * 1000
+      maxAge: 7 * 24 * 3600 * 1000,
     });
 
     // Notify Admin Panel in real time
     emitAdminEvent('student:registered', {
       student: {
-        ...user,
+        ...userPayload,
         verificationStatus: 'PENDING',
-        createdAt: new Date().toISOString()
-      }
+        createdAt: user.createdAt.toISOString(),
+      },
     });
 
-    return res.status(201).json({ success: true, user, token });
+    return res.status(201).json({ success: true, user: userPayload, token });
   } catch (error: any) {
-    // Return readable Zod validation errors
     if (error?.errors) {
       const msg = error.errors.map((e: any) => `${e.path?.join('.') || 'field'}: ${e.message}`).join('; ');
       return res.status(400).json({ success: false, message: msg });
@@ -78,9 +76,7 @@ authRouter.post('/login', async (req, res) => {
   try {
     const { email, password } = loginSchema.parse(req.body);
 
-    const user = await prisma.user.findUnique({
-      where: { email }
-    });
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
 
     if (!user) {
       return res.status(401).json({ success: false, message: 'Invalid email or password' });
@@ -95,13 +91,16 @@ authRouter.post('/login', async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
 
+    user.lastLogin = new Date();
+    await user.save();
+
     const userPayload = {
-      id: user.id,
+      id: user._id.toString(),
       email: user.email,
       fullName: user.fullName,
       campusAlias: user.campusAlias,
       studentId: user.studentId,
-      role: user.role
+      role: user.role,
     };
 
     const token = generateToken(userPayload);
@@ -109,7 +108,7 @@ authRouter.post('/login', async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 7 * 24 * 3600 * 1000
+      maxAge: 7 * 24 * 3600 * 1000,
     });
 
     return res.json({ success: true, user: userPayload, token });

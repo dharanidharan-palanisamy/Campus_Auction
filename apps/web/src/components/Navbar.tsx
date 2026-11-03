@@ -2,21 +2,36 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { usePathname } from 'next/navigation';
-import { useAuth } from '@/context/AuthContext';
 import { 
   Gavel, 
-  Search, 
-  PlusCircle, 
   Clock, 
   Sparkles, 
-  Bell, 
-  User as UserIcon, 
-  LogOut, 
-  ShieldCheck, 
   Menu, 
   X 
 } from 'lucide-react';
+
+const NavDesktopActions = dynamic(
+  () => import('./NavUserActions').then((mod) => mod.NavDesktopActions),
+  {
+    ssr: false,
+    loading: () => <div className="h-8 w-28 bg-slate-100 rounded-xl animate-pulse" />,
+  }
+);
+
+const NavMobileActions = dynamic(
+  () => import('./NavUserActions').then((mod) => mod.NavMobileActions),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="py-2 space-y-2 animate-pulse">
+        <div className="h-4 bg-slate-100 rounded w-28" />
+        <div className="h-4 bg-slate-100 rounded w-20" />
+      </div>
+    ),
+  }
+);
 
 export function Navbar() {
   return (
@@ -28,13 +43,7 @@ export function Navbar() {
 
 function NavbarContent() {
   const pathname = usePathname();
-  const { user, logout, isLoading } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   // Automatically close mobile menu whenever route changes
   useEffect(() => {
@@ -71,8 +80,12 @@ function NavbarContent() {
               <Gavel className="w-5 h-5" />
             </div>
             <div>
-              <span className="font-extrabold text-xl tracking-tight text-slate-900">Campus<span className="text-indigo-600">Bid</span></span>
-              <span className="block text-[10px] uppercase font-bold tracking-widest text-slate-400 -mt-1">Verified Marketplace</span>
+              <span className="font-extrabold text-xl tracking-tight text-slate-900">
+                Campus<span className="text-indigo-600">Bid</span>
+              </span>
+              <span className="block text-[10px] uppercase font-bold tracking-widest text-slate-400 -mt-1">
+                Verified Marketplace
+              </span>
             </div>
           </Link>
 
@@ -81,65 +94,25 @@ function NavbarContent() {
             <Link href="/auctions" className="text-sm font-semibold text-slate-700 hover:text-indigo-600 transition">
               Product
             </Link>
-            <Link href="/auctions?closing_soon=true" className="text-sm font-semibold flex items-center gap-1.5 text-amber-600 hover:text-amber-700 transition">
+            <Link
+              href="/auctions?closing_soon=true"
+              className="text-sm font-semibold flex items-center gap-1.5 text-amber-600 hover:text-amber-700 transition"
+            >
               <Clock className="w-4 h-4" />
               Closing Soon
             </Link>
-            <Link href="/assistant" className="text-sm font-semibold flex items-center gap-1.5 text-indigo-600 hover:text-indigo-700 transition">
+            <Link
+              href="/assistant"
+              className="text-sm font-semibold flex items-center gap-1.5 text-indigo-600 hover:text-indigo-700 transition"
+            >
               <Sparkles className="w-4 h-4" />
               AI Assistant
             </Link>
           </nav>
 
           {/* User Controls & Actions */}
-          <div className="hidden md:flex items-center gap-3">
-            {!mounted || isLoading ? (
-              <div className="h-8 w-28 bg-slate-100 rounded-xl animate-pulse" />
-            ) : user && user.role === 'STUDENT' ? (
-              <>
-                <Link
-                  href="/dashboard/listings/new"
-                  className="flex items-center gap-1.5 bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-sm hover:bg-indigo-700 transition"
-                >
-                  <PlusCircle className="w-4 h-4" />
-                  Create Listing
-                </Link>
-
-                <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
-                  <Link
-                    href="/dashboard"
-                    className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-100 transition"
-                  >
-                    <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center font-bold text-xs text-slate-700">
-                      {user.campusAlias.substring(0, 2).toUpperCase()}
-                    </div>
-                    <span className="text-sm font-medium text-slate-800 hidden lg:inline">{user.campusAlias}</span>
-                  </Link>
-                  <button
-                    onClick={logout}
-                    title="Logout"
-                    className="p-2 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                  >
-                    <LogOut className="w-4 h-4" />
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div className="flex items-center gap-2">
-                <Link
-                  href="/register"
-                  className="text-sm font-semibold text-indigo-600 hover:text-indigo-700 px-3 py-2 rounded-lg hover:bg-indigo-50 transition"
-                >
-                  Register
-                </Link>
-                <Link
-                  href="/login"
-                  className="text-sm font-semibold text-slate-700 hover:text-indigo-600 px-3 py-2 rounded-lg hover:bg-slate-100 transition"
-                >
-                  Log In
-                </Link>
-              </div>
-            )}
+          <div className="hidden md:flex items-center gap-3" suppressHydrationWarning>
+            <NavDesktopActions />
           </div>
 
           {/* Mobile hamburger button */}
@@ -147,6 +120,7 @@ function NavbarContent() {
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg"
+              aria-label="Toggle navigation menu"
             >
               {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
@@ -178,55 +152,9 @@ function NavbarContent() {
           >
             AI Assistant
           </Link>
-          {!mounted || isLoading ? (
-            <div className="py-2 space-y-2 animate-pulse">
-              <div className="h-4 bg-slate-100 rounded w-28" />
-              <div className="h-4 bg-slate-100 rounded w-20" />
-            </div>
-          ) : user && user.role === 'STUDENT' ? (
-            <>
-              <Link
-                href="/dashboard/listings/new"
-                onClick={() => setMobileMenuOpen(false)}
-                className="block py-2 text-base font-semibold text-indigo-600 hover:text-indigo-700 transition"
-              >
-                + Create Listing
-              </Link>
-              <Link
-                href="/dashboard"
-                onClick={() => setMobileMenuOpen(false)}
-                className="block py-2 text-base font-semibold text-slate-700 hover:text-slate-900 transition"
-              >
-                My Student Account
-              </Link>
-              <button
-                onClick={() => {
-                  logout();
-                  setMobileMenuOpen(false);
-                }}
-                className="block w-full text-left py-2 text-base font-semibold text-rose-600 hover:text-rose-700 transition"
-              >
-                Sign Out
-              </button>
-            </>
-          ) : (
-            <>
-              <Link
-                href="/register"
-                onClick={() => setMobileMenuOpen(false)}
-                className="block py-2 text-base font-semibold text-indigo-600 hover:text-indigo-700 transition"
-              >
-                Register
-              </Link>
-              <Link
-                href="/login"
-                onClick={() => setMobileMenuOpen(false)}
-                className="block py-2 text-base font-semibold text-slate-700 hover:text-slate-900 transition"
-              >
-                Log In
-              </Link>
-            </>
-          )}
+          <div suppressHydrationWarning>
+            <NavMobileActions onClose={() => setMobileMenuOpen(false)} />
+          </div>
         </div>
       )}
     </header>

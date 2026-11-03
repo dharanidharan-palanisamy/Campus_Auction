@@ -6,6 +6,7 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 
+import { connectDatabase, disconnectDatabase } from './config/database';
 import { initSocket } from './lib/socket';
 import { authRouter } from './routes/auth.routes';
 import { auctionRouter } from './routes/auction.routes';
@@ -81,9 +82,33 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 const PORT = process.env.PORT || 4000;
 
 if (process.env.NODE_ENV !== 'test') {
-  server.listen(PORT, () => {
-    console.log(`🚀 Campus Auction API & Socket.IO running on port ${PORT}`);
-  });
+  // Connect to MongoDB before accepting connections
+  connectDatabase()
+    .then(() => {
+      server.listen(PORT, () => {
+        console.log(`🚀 Campus Auction API & Socket.IO running on port ${PORT}`);
+      });
+    })
+    .catch((err) => {
+      console.error('Failed to connect to MongoDB on startup:', err);
+      // Still listen so healthcheck / error responses work
+      server.listen(PORT, () => {
+        console.log(`⚠️ Campus Auction API running on port ${PORT} (Database pending connection)`);
+      });
+    });
 }
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('Shutting down server gracefully...');
+  await disconnectDatabase();
+  server.close(() => process.exit(0));
+});
+
+process.on('SIGTERM', async () => {
+  console.log('Shutting down server gracefully...');
+  await disconnectDatabase();
+  server.close(() => process.exit(0));
+});
 
 export { app, server };

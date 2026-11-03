@@ -21,6 +21,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { adminUser, isAdminLoading } = useAuth();
+  const { isConnected, notifications, dismissNotification } = useAdminSocket();
 
   // If on admin login page, display standalone without admin shell
   if (pathname === '/admin/login') {
@@ -36,8 +37,6 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   });
 
   const isAuthorized = !isAdminLoading && adminUser && adminUser.role === 'ADMIN';
-
-  const { isConnected, notifications, dismissNotification } = useAdminSocket();
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col lg:flex-row font-sans text-slate-900 relative">

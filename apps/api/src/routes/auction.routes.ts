@@ -1,8 +1,27 @@
 import { Router } from 'express';
-import { prisma } from '../lib/prisma';
-import { authenticateToken, AuthRequest, requireAdmin } from '../middlewares/auth';
+import mongoose from 'mongoose';
+import {
+  AuctionListing,
+  Category,
+  Bid,
+  Question,
+  AuctionOutcome,
+  HandoverRecord,
+  SavedListing,
+  AutoBidLimit,
+  User,
+} from '../models';
+import { authenticateToken, AuthRequest } from '../middlewares/auth';
 import { BiddingService } from '../services/bidding.service';
-import { createListingSchema, updateListingSchema, placeBidSchema, sellerDecisionSchema, handoverRecordSchema, questionSchema, answerSchema } from '@campus/shared';
+import {
+  createListingSchema,
+  updateListingSchema,
+  placeBidSchema,
+  sellerDecisionSchema,
+  handoverRecordSchema,
+  questionSchema,
+  answerSchema,
+} from '@campus/shared';
 import { emitAdminEvent } from '../lib/socket';
 
 export const auctionRouter = Router();
@@ -21,7 +40,7 @@ auctionRouter.get('/', async (req, res) => {
       closing_soon,
       max_hours = '3',
       page = '1',
-      limit = '12'
+      limit = '12',
     } = req.query;
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
@@ -29,102 +48,125 @@ auctionRouter.get('/', async (req, res) => {
     const skip = (pageNum - 1) * take;
 
     const now = new Date();
-    const where: any = {};
+    const filter: any = {};
     const isClosingSoonOnly = closing_soon === 'true';
 
     if (isClosingSoonOnly) {
-      // Specifically filter only products ending in less than max_hours (default 3 hours)
       const maxHours = parseFloat(max_hours as string) || 3;
       const cutoff = new Date(now.getTime() + maxHours * 3600 * 1000);
-      where.status = 'ACTIVE';
-      where.closingTime = {
-        gt: now,
-        lte: cutoff
-      };
+      filter.status = 'ACTIVE';
+      filter.closingTime = { $gt: now, $lte: cutoff };
     } else if (status && status !== 'ALL') {
       if (status === 'ACTIVE') {
-        // Active = status ACTIVE + closing time in the future
-        where.status = 'ACTIVE';
-        where.closingTime = { gt: now };
+        filter.status = 'ACTIVE';
+        filter.closingTime = { $gt: now };
       } else if (status === 'ENDED') {
-        // Ended = COMPLETED or UNSOLD or CANCELLED
-        where.status = { in: ['COMPLETED', 'UNSOLD', 'CANCELLED', 'REJECTED'] };
+        filter.status = { $in: ['COMPLETED', 'UNSOLD', 'CANCELLED', 'REJECTED'] };
       } else {
-        where.status = status;
+        filter.status = status;
         if (sort === 'closing_soon') {
-          where.closingTime = { gt: now };
+          filter.closingTime = { $gt: now };
         }
       }
     } else if (sort === 'closing_soon') {
-      // closing_soon sort implies only active auctions
-      where.status = 'ACTIVE';
-      where.closingTime = { gt: now };
+      filter.status = 'ACTIVE';
+      filter.closingTime = { $gt: now };
     }
-    // status === 'ALL' or no status: no filter → return everything
 
     if (category) {
-      where.category = { slug: category as string };
+      const catDoc = await Category.findOne({ slug: category as string });
+      if (catDoc) {
+        filter.categoryId = catDoc._id;
+      } else {
+        // No match for this category slug
+        return res.json({
+          success: true,
+          data: [],
+          pagination: { page: pageNum, limit: take, total: 0, totalPages: 0 },
+        });
+      }
     }
 
     if (condition) {
-      where.condition = condition as string;
+      filter.condition = condition as string;
     }
 
     if (minPrice || maxPrice) {
-      where.currentLeadingBidInCents = {};
-      if (minPrice) where.currentLeadingBidInCents.gte = parseInt(minPrice as string, 10) * 100;
-      if (maxPrice) where.currentLeadingBidInCents.lte = parseInt(maxPrice as string, 10) * 100;
+      filter.currentLeadingBidInCents = {};
+      if (minPrice) filter.currentLeadingBidInCents.$gte = parseInt(minPrice as string, 10) * 100;
+      if (maxPrice) filter.currentLeadingBidInCents.$lte = parseInt(maxPrice as string, 10) * 100;
     }
 
     if (q) {
-      const searchTerms = (q as string).trim().split(/\s+/).filter(Boolean);
-      where.AND = searchTerms.map((term) => ({
-        OR: [
-          { title: { contains: term } },
-          { description: { contains: term } },
-          { category: { name: { contains: term } } },
-          { category: { slug: { contains: term } } },
-        ],
+      const terms = (q as string).trim().split(/\s+/).filter(Boolean);
+      const regexes = terms.map((t) => new RegExp(t, 'i'));
+      filter.$and = regexes.map((reg) => ({
+        $or: [{ title: reg }, { description: reg }],
       }));
     }
 
-    let orderBy: any = { closingTime: 'asc' };
-    if (sort === 'newest') orderBy = { createdAt: 'desc' };
-    if (sort === 'price_low') orderBy = { currentLeadingBidInCents: 'asc' };
-    if (sort === 'price_high') orderBy = { currentLeadingBidInCents: 'desc' };
-    // For 'all' status view without closing_soon, default to newest
+    let sortOption: any = { closingTime: 1 };
+    if (sort === 'newest') sortOption = { createdAt: -1 };
+    if (sort === 'price_low') sortOption = { currentLeadingBidInCents: 1 };
+    if (sort === 'price_high') sortOption = { currentLeadingBidInCents: -1 };
     if ((!status || status === 'ALL') && !isClosingSoonOnly && sort !== 'closing_soon') {
-      orderBy = { createdAt: 'desc' };
+      sortOption = { createdAt: -1 };
     }
     if (isClosingSoonOnly) {
-      orderBy = { closingTime: 'asc' };
+      sortOption = { closingTime: 1 };
     }
 
-    const [total, auctions] = await Promise.all([
-      prisma.auctionListing.count({ where }),
-      prisma.auctionListing.findMany({
-        where,
-        take,
-        skip,
-        orderBy,
-        include: {
-          category: { select: { name: true, slug: true, icon: true } },
-          images: { orderBy: { displayOrder: 'asc' } },
-          seller: { select: { id: true, campusAlias: true, email: true } },
-          _count: { select: { bids: true, questions: true } }
-        }
-      })
+    const [total, listings] = await Promise.all([
+      AuctionListing.countDocuments(filter),
+      AuctionListing.find(filter)
+        .sort(sortOption)
+        .skip(skip)
+        .limit(take)
+        .populate('category', 'name slug icon')
+        .populate('seller', 'fullName campusAlias email')
+        .lean(),
     ]);
+
+    // Attach _count for bids and questions to preserve exact contract
+    const listingIds = listings.map((l: any) => l._id);
+    const [bidCounts, questionCounts] = await Promise.all([
+      Bid.aggregate([
+        { $match: { listingId: { $in: listingIds } } },
+        { $group: { _id: '$listingId', count: { $sum: 1 } } },
+      ]),
+      Question.aggregate([
+        { $match: { listingId: { $in: listingIds } } },
+        { $group: { _id: '$listingId', count: { $sum: 1 } } },
+      ]),
+    ]);
+
+    const bidCountMap = new Map<string, number>();
+    bidCounts.forEach((b: any) => bidCountMap.set(b._id.toString(), b.count));
+
+    const questionCountMap = new Map<string, number>();
+    questionCounts.forEach((q: any) => questionCountMap.set(q._id.toString(), q.count));
+
+    const formattedListings = listings.map((l: any) => {
+      const idStr = l._id.toString();
+      return {
+        ...l,
+        id: idStr,
+        _count: {
+          bids: bidCountMap.get(idStr) || 0,
+          questions: questionCountMap.get(idStr) || 0,
+        },
+      };
+    });
 
     return res.json({
       success: true,
-      data: auctions,
+      data: formattedListings,
       pagination: {
         page: pageNum,
         limit: take,
         total,
-        totalPages: Math.ceil(total / take)
-      }
+        totalPages: Math.ceil(total / take),
+      },
     });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
@@ -134,12 +176,26 @@ auctionRouter.get('/', async (req, res) => {
 // 2. Categories List
 auctionRouter.get('/categories', async (req, res) => {
   try {
-    const categories = await prisma.category.findMany({
-      include: {
-        _count: { select: { listings: { where: { status: 'ACTIVE' } } } }
-      }
-    });
-    return res.json({ success: true, data: categories });
+    const categories = await Category.find({ isActive: true }).lean();
+
+    // Compute active listing count per category
+    const activeCounts = await AuctionListing.aggregate([
+      { $match: { status: 'ACTIVE' } },
+      { $group: { _id: '$categoryId', count: { $sum: 1 } } },
+    ]);
+
+    const countMap = new Map<string, number>();
+    activeCounts.forEach((c: any) => countMap.set(c._id.toString(), c.count));
+
+    const formatted = categories.map((cat: any) => ({
+      ...cat,
+      id: cat._id.toString(),
+      _count: {
+        listings: countMap.get(cat._id.toString()) || 0,
+      },
+    }));
+
+    return res.json({ success: true, data: formatted });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -148,35 +204,61 @@ auctionRouter.get('/categories', async (req, res) => {
 // 3. Single Auction Detail
 auctionRouter.get('/:id', async (req, res) => {
   try {
-    const auction = await prisma.auctionListing.findUnique({
-      where: { id: req.params.id },
-      include: {
-        category: true,
-        images: { orderBy: { displayOrder: 'asc' } },
-        seller: { select: { id: true, campusAlias: true, email: true, createdAt: true } },
-        bids: {
-          orderBy: { acceptedAt: 'desc' },
-          include: { bidder: { select: { id: true, campusAlias: true } } }
-        },
-        questions: {
-          orderBy: { createdAt: 'desc' },
-          include: {
-            asker: { select: { campusAlias: true } },
-            answers: {
-              include: { seller: { select: { campusAlias: true } } }
-            }
-          }
-        },
-        outcome: true,
-        handover: true
-      }
-    });
-
-    if (!auction) {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(404).json({ success: false, message: 'Auction not found' });
     }
 
-    return res.json({ success: true, data: auction });
+    const listing = await AuctionListing.findById(id)
+      .populate('category')
+      .populate('seller', 'id fullName campusAlias email createdAt')
+      .lean();
+
+    if (!listing) {
+      return res.status(404).json({ success: false, message: 'Auction not found' });
+    }
+
+    const [bids, questions, outcome, handover] = await Promise.all([
+      Bid.find({ listingId: listing._id })
+        .sort({ acceptedAt: -1 })
+        .populate('bidder', 'id campusAlias')
+        .lean(),
+      Question.find({ listingId: listing._id })
+        .sort({ createdAt: -1 })
+        .populate('asker', 'campusAlias')
+        .populate('answers.sellerId', 'campusAlias')
+        .lean(),
+      AuctionOutcome.findOne({ listingId: listing._id }).lean(),
+      HandoverRecord.findOne({ listingId: listing._id }).lean(),
+    ]);
+
+    const formattedQuestions = questions.map((q: any) => ({
+      ...q,
+      id: q._id.toString(),
+      answers: (q.answers || []).map((ans: any) => ({
+        ...ans,
+        id: ans._id?.toString(),
+        seller: ans.sellerId,
+      })),
+    }));
+
+    const formattedBids = bids.map((b: any) => ({
+      ...b,
+      id: b._id.toString(),
+    }));
+
+    return res.json({
+      success: true,
+      data: {
+        ...listing,
+        id: listing._id.toString(),
+        images: (listing.images || []).sort((a: any, b: any) => (a.displayOrder || 0) - (b.displayOrder || 0)),
+        bids: formattedBids,
+        questions: formattedQuestions,
+        outcome: outcome ? { ...outcome, id: outcome._id.toString() } : null,
+        handover: handover ? { ...handover, id: handover._id.toString() } : null,
+      },
+    });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -187,52 +269,40 @@ auctionRouter.post('/', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const validated = createListingSchema.parse(req.body);
 
-    const listing = await prisma.auctionListing.create({
-      data: {
-        sellerId: req.user!.id,
-        categoryId: validated.categoryId,
-        title: validated.title,
-        description: validated.description,
-        condition: validated.condition,
-        startingPriceInCents: validated.startingPriceInCents,
-        minIncrementInCents: validated.minIncrementInCents,
-        currentLeadingBidInCents: 0,
-        status: 'ACTIVE',
-        startTime: validated.startTime ? new Date(validated.startTime) : new Date(),
-        closingTime: new Date(validated.closingTime),
-        pickupLocation: validated.pickupLocation,
-        sellerNotes: validated.sellerNotes,
-        images: {
-          create: validated.imageUrls.map((url, index) => ({
-            url,
-            displayOrder: index
-          }))
-        }
-      },
-      include: {
-        images: true,
-        category: true,
-        seller: {
-          select: {
-            id: true,
-            fullName: true,
-            campusAlias: true,
-            email: true,
-            department: true
-          }
-        }
-      }
+    const listing = await AuctionListing.create({
+      sellerId: new mongoose.Types.ObjectId(req.user!.id),
+      categoryId: new mongoose.Types.ObjectId(validated.categoryId),
+      title: validated.title,
+      description: validated.description,
+      condition: validated.condition,
+      startingPriceInCents: validated.startingPriceInCents,
+      minIncrementInCents: validated.minIncrementInCents,
+      currentLeadingBidInCents: 0,
+      status: 'ACTIVE',
+      startTime: validated.startTime ? new Date(validated.startTime) : new Date(),
+      closingTime: new Date(validated.closingTime),
+      pickupLocation: validated.pickupLocation,
+      sellerNotes: validated.sellerNotes,
+      images: validated.imageUrls.map((url, index) => ({
+        url,
+        displayOrder: index,
+      })),
     });
+
+    await listing.populate('category');
+    await listing.populate('seller', 'id fullName campusAlias email department');
+
+    const result = listing.toJSON();
 
     // Notify Admin Panel in real time
     emitAdminEvent('listing:created', {
       listing: {
-        ...listing,
-        _count: { bids: 0 }
-      }
+        ...result,
+        _count: { bids: 0 },
+      },
     });
 
-    return res.status(201).json({ success: true, data: listing });
+    return res.status(201).json({ success: true, data: result });
   } catch (error: any) {
     if (error?.errors) {
       const msg = error.errors.map((e: any) => `${e.path?.join('.') || 'field'}: ${e.message}`).join('; ');
@@ -246,75 +316,65 @@ auctionRouter.post('/', authenticateToken, async (req: AuthRequest, res) => {
 const updateListingHandler = async (req: AuthRequest, res: any) => {
   try {
     const listingId = req.params.id;
-    const listing = await prisma.auctionListing.findUnique({
-      where: { id: listingId },
-      include: { bids: { select: { id: true } } }
-    });
+    if (!mongoose.Types.ObjectId.isValid(listingId)) {
+      return res.status(404).json({ success: false, message: 'Listing not found' });
+    }
 
+    const listing = await AuctionListing.findById(listingId);
     if (!listing) {
       return res.status(404).json({ success: false, message: 'Listing not found' });
     }
 
-    if (listing.sellerId !== req.user!.id && req.user!.role !== 'ADMIN') {
+    if (listing.sellerId.toString() !== req.user!.id && req.user!.role !== 'ADMIN') {
       return res.status(403).json({ success: false, message: 'Only the seller or admin can update this listing' });
     }
 
     const validated = updateListingSchema.parse(req.body);
 
-    const hasBids = listing.bids.length > 0;
+    const bidCount = await Bid.countDocuments({ listingId: listing._id });
+    const hasBids = bidCount > 0;
     if (hasBids && (validated.startingPriceInCents !== undefined || validated.minIncrementInCents !== undefined)) {
       return res.status(400).json({
         success: false,
-        message: 'Starting price and increment cannot be modified once bids have been placed.'
+        message: 'Starting price and increment cannot be modified once bids have been placed.',
       });
     }
 
-    const updateData: any = {};
-    if (validated.title !== undefined) updateData.title = validated.title;
-    if (validated.description !== undefined) updateData.description = validated.description;
-    if (validated.categoryId !== undefined) updateData.categoryId = validated.categoryId;
-    if (validated.condition !== undefined) updateData.condition = validated.condition;
-    if (validated.pickupLocation !== undefined) updateData.pickupLocation = validated.pickupLocation;
-    if (validated.sellerNotes !== undefined) updateData.sellerNotes = validated.sellerNotes;
-    if (validated.closingTime !== undefined) updateData.closingTime = new Date(validated.closingTime);
+    if (validated.title !== undefined) listing.title = validated.title;
+    if (validated.description !== undefined) listing.description = validated.description;
+    if (validated.categoryId !== undefined) listing.categoryId = new mongoose.Types.ObjectId(validated.categoryId);
+    if (validated.condition !== undefined) listing.condition = validated.condition;
+    if (validated.pickupLocation !== undefined) listing.pickupLocation = validated.pickupLocation;
+    if (validated.sellerNotes !== undefined) listing.sellerNotes = validated.sellerNotes || undefined;
+    if (validated.closingTime !== undefined) listing.closingTime = new Date(validated.closingTime);
     if (!hasBids) {
-      if (validated.startingPriceInCents !== undefined) updateData.startingPriceInCents = validated.startingPriceInCents;
-      if (validated.minIncrementInCents !== undefined) updateData.minIncrementInCents = validated.minIncrementInCents;
+      if (validated.startingPriceInCents !== undefined) listing.startingPriceInCents = validated.startingPriceInCents;
+      if (validated.minIncrementInCents !== undefined) listing.minIncrementInCents = validated.minIncrementInCents;
     }
 
     if (validated.imageUrls && validated.imageUrls.length > 0) {
-      await prisma.listingImage.deleteMany({ where: { listingId } });
-      await prisma.listingImage.createMany({
-        data: validated.imageUrls.map((url, index) => ({
-          listingId,
-          url,
-          displayOrder: index
-        }))
-      });
+      listing.images = validated.imageUrls.map((url, index) => ({
+        url,
+        displayOrder: index,
+      }));
     }
 
-    const updated = await prisma.auctionListing.update({
-      where: { id: listingId },
-      data: updateData,
-      include: {
-        images: { orderBy: { displayOrder: 'asc' } },
-        category: true,
-        seller: { select: { id: true, campusAlias: true, email: true, createdAt: true } },
-        bids: {
-          orderBy: { acceptedAt: 'desc' },
-          include: { bidder: { select: { id: true, campusAlias: true } } }
-        },
-        questions: {
-          orderBy: { createdAt: 'desc' },
-          include: {
-            asker: { select: { campusAlias: true } },
-            answers: { include: { seller: { select: { campusAlias: true } } } }
-          }
-        }
-      }
-    });
+    await listing.save();
+    await listing.populate('category');
+    await listing.populate('seller', 'id campusAlias email createdAt');
 
-    return res.json({ success: true, data: updated, message: 'Listing updated successfully' });
+    const [bids, questions] = await Promise.all([
+      Bid.find({ listingId: listing._id }).sort({ acceptedAt: -1 }).populate('bidder', 'id campusAlias').lean(),
+      Question.find({ listingId: listing._id }).sort({ createdAt: -1 }).populate('asker', 'campusAlias').lean(),
+    ]);
+
+    const formatted = {
+      ...listing.toJSON(),
+      bids: bids.map((b: any) => ({ ...b, id: b._id.toString() })),
+      questions: questions.map((q: any) => ({ ...q, id: q._id.toString() })),
+    };
+
+    return res.json({ success: true, data: formatted, message: 'Listing updated successfully' });
   } catch (error: any) {
     if (error?.errors) {
       const msg = error.errors.map((e: any) => `${e.path?.join('.') || 'field'}: ${e.message}`).join('; ');
@@ -331,24 +391,29 @@ auctionRouter.put('/:id', authenticateToken, updateListingHandler);
 auctionRouter.delete('/:id', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const listingId = req.params.id;
-    const listing = await prisma.auctionListing.findUnique({
-      where: { id: listingId },
-      include: { bids: { select: { id: true } } }
-    });
+    if (!mongoose.Types.ObjectId.isValid(listingId)) {
+      return res.status(404).json({ success: false, message: 'Listing not found' });
+    }
 
+    const listing = await AuctionListing.findById(listingId);
     if (!listing) {
       return res.status(404).json({ success: false, message: 'Listing not found' });
     }
 
-    if (listing.sellerId !== req.user!.id && req.user!.role !== 'ADMIN') {
+    if (listing.sellerId.toString() !== req.user!.id && req.user!.role !== 'ADMIN') {
       return res.status(403).json({ success: false, message: 'Only the seller or admin can delete this listing' });
     }
 
-    // Clean up any saved listings first
-    await prisma.savedListing.deleteMany({ where: { listingId } });
-
-    // Delete listing (all related records cascade delete)
-    await prisma.auctionListing.delete({ where: { id: listingId } });
+    // Cascade delete related records
+    await Promise.all([
+      SavedListing.deleteMany({ listingId: listing._id }),
+      Bid.deleteMany({ listingId: listing._id }),
+      Question.deleteMany({ listingId: listing._id }),
+      AutoBidLimit.deleteMany({ listingId: listing._id }),
+      AuctionOutcome.deleteMany({ listingId: listing._id }),
+      HandoverRecord.deleteMany({ listingId: listing._id }),
+      AuctionListing.findByIdAndDelete(listing._id),
+    ]);
 
     return res.json({ success: true, message: 'Listing deleted successfully' });
   } catch (error: any) {
@@ -366,10 +431,54 @@ auctionRouter.post('/:id/bids', authenticateToken, async (req: AuthRequest, res)
       bidderId: req.user!.id,
       amountInCents,
       idempotencyKey,
-      bidType: 'MANUAL'
+      bidType: 'MANUAL',
     });
 
     return res.status(201).json({ ...result });
+  } catch (error: any) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+// 5.1 Set Auto-Bid Limit
+auctionRouter.post('/:id/auto-bid', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { maxLimitInCents } = req.body;
+    const listingId = req.params.id;
+
+    if (!maxLimitInCents || maxLimitInCents <= 0) {
+      return res.status(400).json({ success: false, message: 'Valid maxLimitInCents is required' });
+    }
+
+    const listing = await AuctionListing.findById(listingId);
+    if (!listing || listing.status !== 'ACTIVE') {
+      return res.status(400).json({ success: false, message: 'Auction is not active' });
+    }
+
+    if (listing.sellerId.toString() === req.user!.id) {
+      return res.status(403).json({ success: false, message: 'Sellers cannot set auto-bids on their own listings' });
+    }
+
+    const autoBid = await AutoBidLimit.findOneAndUpdate(
+      { listingId: listing._id, bidderId: new mongoose.Types.ObjectId(req.user!.id) },
+      {
+        listingId: listing._id,
+        bidderId: new mongoose.Types.ObjectId(req.user!.id),
+        maxLimitInCents: Number(maxLimitInCents),
+        isActive: true,
+      },
+      { upsert: true, new: true }
+    );
+
+    return res.json({
+      success: true,
+      message: 'Automatic proxy bid limit saved successfully',
+      data: {
+        id: autoBid._id.toString(),
+        listingId,
+        isActive: autoBid.isActive,
+      },
+    });
   } catch (error: any) {
     return res.status(400).json({ success: false, message: error.message });
   }
@@ -381,54 +490,50 @@ auctionRouter.post('/:id/decision', authenticateToken, async (req: AuthRequest, 
     const { decision, rejectionReason } = sellerDecisionSchema.parse(req.body);
     const listingId = req.params.id;
 
-    const listing = await prisma.auctionListing.findUnique({
-      where: { id: listingId },
-      include: { outcome: true }
-    });
-
+    const listing = await AuctionListing.findById(listingId);
     if (!listing) return res.status(404).json({ success: false, message: 'Listing not found' });
-    if (listing.sellerId !== req.user!.id) {
+    if (listing.sellerId.toString() !== req.user!.id) {
       return res.status(403).json({ success: false, message: 'Only the seller can decide on this auction' });
     }
 
     if (decision === 'APPROVE') {
-      await prisma.auctionListing.update({
-        where: { id: listingId },
-        data: { status: 'RESERVED' }
-      });
+      listing.status = 'RESERVED';
+      await listing.save();
 
-      await prisma.auctionOutcome.update({
-        where: { listingId },
-        data: {
-          sellerDecision: 'APPROVED',
-          decidedAt: new Date()
-        }
-      });
+      await AuctionOutcome.findOneAndUpdate(
+        { listingId: listing._id },
+        { sellerDecision: 'APPROVED', decidedAt: new Date() }
+      );
 
       // Initialize Handover record
-      await prisma.handoverRecord.create({
-        data: {
-          listingId,
+      await HandoverRecord.findOneAndUpdate(
+        { listingId: listing._id },
+        {
+          listingId: listing._id,
+          sellerId: listing.sellerId,
           handoverStatus: 'PENDING',
-          pickupNotes: `Scheduled pickup at ${listing.pickupLocation}`
-        }
-      });
+          pickupNotes: `Scheduled pickup at ${listing.pickupLocation}`,
+        },
+        { upsert: true, new: true }
+      );
 
-      return res.json({ success: true, status: 'RESERVED', message: 'Winning bid approved. Item is now reserved for pickup.' });
+      return res.json({
+        success: true,
+        status: 'RESERVED',
+        message: 'Winning bid approved. Item is now reserved for pickup.',
+      });
     } else {
-      await prisma.auctionListing.update({
-        where: { id: listingId },
-        data: { status: 'REJECTED' }
-      });
+      listing.status = 'REJECTED';
+      await listing.save();
 
-      await prisma.auctionOutcome.update({
-        where: { listingId },
-        data: {
+      await AuctionOutcome.findOneAndUpdate(
+        { listingId: listing._id },
+        {
           sellerDecision: 'REJECTED',
           rejectionReason: rejectionReason || 'Seller declined transaction',
-          decidedAt: new Date()
+          decidedAt: new Date(),
         }
-      });
+      );
 
       return res.json({ success: true, status: 'REJECTED', message: 'Winning bid was rejected.' });
     }
@@ -443,37 +548,33 @@ auctionRouter.post('/:id/handover', authenticateToken, async (req: AuthRequest, 
     const { status, pickupNotes } = handoverRecordSchema.parse(req.body);
     const listingId = req.params.id;
 
-    const listing = await prisma.auctionListing.findUnique({
-      where: { id: listingId },
-      include: { outcome: true }
-    });
-
+    const listing = await AuctionListing.findById(listingId);
     if (!listing) return res.status(404).json({ success: false, message: 'Listing not found' });
-    if (listing.sellerId !== req.user!.id && listing.outcome?.winnerId !== req.user!.id) {
+
+    const outcome = await AuctionOutcome.findOne({ listingId: listing._id });
+    const isSeller = listing.sellerId.toString() === req.user!.id;
+    const isWinner = outcome?.winnerId?.toString() === req.user!.id;
+
+    if (!isSeller && !isWinner) {
       return res.status(403).json({ success: false, message: 'Not authorized for this handover' });
     }
 
     const finalStatus = status === 'COMPLETED' ? 'COMPLETED' : 'PICKUP_FAILED';
+    listing.status = finalStatus;
+    await listing.save();
 
-    await prisma.auctionListing.update({
-      where: { id: listingId },
-      data: { status: finalStatus }
-    });
-
-    await prisma.handoverRecord.upsert({
-      where: { listingId },
-      update: {
+    await HandoverRecord.findOneAndUpdate(
+      { listingId: listing._id },
+      {
+        listingId: listing._id,
+        sellerId: listing.sellerId,
+        buyerId: outcome?.winnerId,
         handoverStatus: status,
         pickupNotes,
-        completedAt: new Date()
+        completedAt: new Date(),
       },
-      create: {
-        listingId,
-        handoverStatus: status,
-        pickupNotes,
-        completedAt: new Date()
-      }
-    });
+      { upsert: true, new: true }
+    );
 
     return res.json({ success: true, message: `Handover recorded as ${finalStatus}` });
   } catch (error: any) {
@@ -485,15 +586,18 @@ auctionRouter.post('/:id/handover', authenticateToken, async (req: AuthRequest, 
 auctionRouter.post('/:id/questions', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const { content } = questionSchema.parse(req.body);
-    const question = await prisma.question.create({
-      data: {
-        listingId: req.params.id,
-        askerId: req.user!.id,
-        content
-      },
-      include: { asker: { select: { campusAlias: true } } }
+    const listingId = req.params.id;
+
+    const question = await Question.create({
+      listingId: new mongoose.Types.ObjectId(listingId),
+      askerId: new mongoose.Types.ObjectId(req.user!.id),
+      content,
+      answers: [],
     });
-    return res.status(201).json({ success: true, data: question });
+
+    await question.populate('asker', 'campusAlias');
+
+    return res.status(201).json({ success: true, data: question.toJSON() });
   } catch (error: any) {
     return res.status(400).json({ success: false, message: error.message });
   }
@@ -502,26 +606,38 @@ auctionRouter.post('/:id/questions', authenticateToken, async (req: AuthRequest,
 auctionRouter.post('/questions/:questionId/answer', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const { content } = answerSchema.parse(req.body);
-    const question = await prisma.question.findUnique({
-      where: { id: req.params.questionId },
-      include: { listing: true }
-    });
+    const question = await Question.findById(req.params.questionId);
 
     if (!question) return res.status(404).json({ success: false, message: 'Question not found' });
-    if (question.listing.sellerId !== req.user!.id) {
+
+    const listing = await AuctionListing.findById(question.listingId);
+    if (!listing || listing.sellerId.toString() !== req.user!.id) {
       return res.status(403).json({ success: false, message: 'Only the item seller can answer this question' });
     }
 
-    const answer = await prisma.questionAnswer.create({
-      data: {
-        questionId: question.id,
-        sellerId: req.user!.id,
-        content
-      },
-      include: { seller: { select: { campusAlias: true } } }
-    });
+    const newAnswer = {
+      _id: new mongoose.Types.ObjectId(),
+      sellerId: new mongoose.Types.ObjectId(req.user!.id),
+      content,
+      createdAt: new Date(),
+    };
 
-    return res.status(201).json({ success: true, data: answer });
+    question.answers.push(newAnswer as any);
+    await question.save();
+
+    const user = await User.findById(req.user!.id).select('campusAlias');
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        id: newAnswer._id.toString(),
+        content: newAnswer.content,
+        createdAt: newAnswer.createdAt,
+        seller: {
+          campusAlias: user?.campusAlias || 'Seller',
+        },
+      },
+    });
   } catch (error: any) {
     return res.status(400).json({ success: false, message: error.message });
   }

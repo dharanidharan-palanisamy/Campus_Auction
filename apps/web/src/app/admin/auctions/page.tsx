@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, Suspense } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { formatINR } from '@/lib/utils';
 import { useAdminSocket } from '@/hooks/useAdminSocket';
 import {
@@ -22,6 +23,17 @@ import {
 } from 'lucide-react';
 
 export default function AdminAuctionsPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-slate-400">Loading auction monitor...</div>}>
+      <AdminAuctionsContent />
+    </Suspense>
+  );
+}
+
+function AdminAuctionsContent() {
+  const searchParams = useSearchParams();
+  const initialStatus = searchParams.get('status') || 'ALL';
+
   const [auctions, setAuctions] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -30,8 +42,16 @@ export default function AdminAuctionsPage() {
   const [loading, setLoading] = useState(true);
 
   // Filters
-  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState(initialStatus);
   const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    const s = searchParams.get('status');
+    if (s) {
+      setStatusFilter(s);
+      setPage(1);
+    }
+  }, [searchParams]);
 
   // Timeline / Events Modal
   const [selectedAuctionId, setSelectedAuctionId] = useState<string | null>(null);

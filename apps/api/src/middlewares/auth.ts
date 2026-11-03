@@ -1,13 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { prisma } from '../lib/prisma';
+import { User } from '../models';
 
 export interface AuthenticatedUser {
   id: string;
   email: string;
   fullName: string;
   campusAlias: string;
-  studentId: string;
+  studentId?: string;
   role: string;
 }
 
@@ -18,7 +18,18 @@ export interface AuthRequest extends Request {
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-jwt-token-campus-auction-development-key-32chars';
 
 export const generateToken = (user: AuthenticatedUser): string => {
-  return jwt.sign(user, JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign(
+    {
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      campusAlias: user.campusAlias,
+      studentId: user.studentId,
+      role: user.role,
+    },
+    JWT_SECRET,
+    { expiresIn: '7d' }
+  );
 };
 
 export const authenticateToken = async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -37,18 +48,24 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
     }
 
     const decoded = jwt.verify(token, JWT_SECRET) as AuthenticatedUser;
-    
+
     // Verify user still exists and not suspended
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.id },
-      select: { id: true, email: true, fullName: true, campusAlias: true, studentId: true, role: true, isSuspended: true }
-    });
+    const user = await User.findById(decoded.id).select(
+      'email fullName campusAlias studentId role isSuspended'
+    );
 
     if (!user || user.isSuspended) {
       return res.status(403).json({ success: false, message: 'Account is suspended or inactive' });
     }
 
-    req.user = user;
+    req.user = {
+      id: user._id.toString(),
+      email: user.email,
+      fullName: user.fullName,
+      campusAlias: user.campusAlias,
+      studentId: user.studentId,
+      role: user.role,
+    };
     next();
   } catch (error) {
     return res.status(401).json({ success: false, message: 'Invalid or expired session' });

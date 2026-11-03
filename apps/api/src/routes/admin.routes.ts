@@ -1,6 +1,23 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
-import { prisma } from '../lib/prisma';
+import mongoose from 'mongoose';
+import {
+  User,
+  Category,
+  AuctionListing,
+  Bid,
+  AutoBidLimit,
+  AuctionOutcome,
+  HandoverRecord,
+  Question,
+  SavedListing,
+  SavedSearch,
+  Notification,
+  AuctionEvent,
+  AuditLog,
+  Dispute,
+  AdminSetting,
+} from '../models';
 import { authenticateToken, AuthRequest, requireAdmin, generateToken } from '../middlewares/auth';
 
 export const adminRouter = Router();
@@ -17,9 +34,7 @@ adminRouter.post('/auth/login', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Email and password are required' });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: email.trim().toLowerCase() }
-    });
+    const user = await User.findOne({ email: email.trim().toLowerCase() });
 
     if (!user) {
       return res.status(401).json({ success: false, message: 'Invalid administrator credentials' });
@@ -38,19 +53,16 @@ adminRouter.post('/auth/login', async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid administrator credentials' });
     }
 
-    // Update lastLogin
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { lastLogin: new Date() }
-    });
+    user.lastLogin = new Date();
+    await user.save();
 
     const userPayload = {
-      id: user.id,
+      id: user._id.toString(),
       email: user.email,
       fullName: user.fullName,
       campusAlias: user.campusAlias,
       studentId: user.studentId,
-      role: user.role
+      role: user.role,
     };
 
     const token = generateToken(userPayload);
@@ -58,17 +70,15 @@ adminRouter.post('/auth/login', async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 7 * 24 * 3600 * 1000
+      maxAge: 7 * 24 * 3600 * 1000,
     });
 
-    await prisma.auditLog.create({
-      data: {
-        actorId: user.id,
-        action: 'ADMIN_LOGIN',
-        targetType: 'SYSTEM',
-        targetId: user.id,
-        payload: JSON.stringify({ ip: req.ip, userAgent: req.headers['user-agent'] })
-      }
+    await AuditLog.create({
+      actorId: user._id,
+      action: 'ADMIN_LOGIN',
+      targetType: 'SYSTEM',
+      targetId: user._id.toString(),
+      payload: { ip: req.ip, userAgent: req.headers['user-agent'] },
     });
 
     return res.json({ success: true, user: userPayload, token });
@@ -95,45 +105,29 @@ adminRouter.use(authenticateToken, requireAdmin);
 // Admin Profile Details
 adminRouter.get('/profile', async (req: AuthRequest, res) => {
   try {
-    const admin = await prisma.user.findUnique({
-      where: { id: req.user!.id },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        campusAlias: true,
-        studentId: true,
-        role: true,
-        isEmailVerified: true,
-        createdAt: true,
-        department: true,
-        college: true,
-        lastLogin: true
-      }
-    });
+    const admin = await User.findById(req.user!.id).select(
+      'email fullName campusAlias studentId role isEmailVerified createdAt department college lastLogin'
+    );
 
     if (!admin) {
       return res.status(404).json({ success: false, message: 'Administrator not found' });
     }
 
     const [recentActions, totalActions] = await Promise.all([
-      prisma.auditLog.findMany({
-        where: { actorId: req.user!.id },
-        orderBy: { createdAt: 'desc' },
-        take: 15
-      }),
-      prisma.auditLog.count({
-        where: { actorId: req.user!.id }
-      })
+      AuditLog.find({ actorId: new mongoose.Types.ObjectId(req.user!.id) })
+        .sort({ createdAt: -1 })
+        .limit(15)
+        .lean(),
+      AuditLog.countDocuments({ actorId: new mongoose.Types.ObjectId(req.user!.id) }),
     ]);
 
     return res.json({
       success: true,
       data: {
-        ...admin,
-        recentActions,
-        totalActions
-      }
+        ...admin.toJSON(),
+        recentActions: recentActions.map((a: any) => ({ ...a, id: a._id.toString() })),
+        totalActions,
+      },
     });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
@@ -144,14 +138,10 @@ adminRouter.get('/profile', async (req: AuthRequest, res) => {
 adminRouter.patch('/profile', async (req: AuthRequest, res) => {
   try {
     const { fullName, campusAlias, currentPassword, newPassword } = req.body;
-    const admin = await prisma.user.findUnique({ where: { id: req.user!.id } });
+    const admin = await User.findById(req.user!.id);
     if (!admin) {
       return res.status(404).json({ success: false, message: 'Administrator not found' });
     }
-
-    const updateData: any = {};
-    if (fullName) updateData.fullName = fullName.trim();
-    if (campusAlias) updateData.campusAlias = campusAlias.trim();
 
     if (newPassword) {
       if (!currentPassword) {
@@ -159,42 +149,25 @@ adminRouter.patch('/profile', async (req: AuthRequest, res) => {
       }
       const isMatch = await bcrypt.compare(currentPassword, admin.passwordHash);
       if (!isMatch) {
-        return res.status(400).json({ success: false, message: 'Current password is incorrect' });
+        return res.status(400).json({ success: false, message: 'Current password does not match' });
       }
-      if (newPassword.length < 8) {
-        return res.status(400).json({ success: false, message: 'New password must be at least 8 characters' });
-      }
-      updateData.passwordHash = await bcrypt.hash(newPassword, 10);
+      admin.passwordHash = await bcrypt.hash(newPassword, 10);
     }
 
-    const updated = await prisma.user.update({
-      where: { id: req.user!.id },
-      data: updateData,
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        campusAlias: true,
-        studentId: true,
-        role: true,
-        isEmailVerified: true,
-        department: true,
-        college: true,
-        createdAt: true
-      }
+    if (fullName) admin.fullName = fullName.trim();
+    if (campusAlias) admin.campusAlias = campusAlias.trim();
+
+    await admin.save();
+
+    await AuditLog.create({
+      actorId: admin._id,
+      action: 'UPDATE_ADMIN_PROFILE',
+      targetType: 'USER',
+      targetId: admin._id.toString(),
+      payload: { fullName: admin.fullName, campusAlias: admin.campusAlias },
     });
 
-    await prisma.auditLog.create({
-      data: {
-        actorId: req.user!.id,
-        action: 'UPDATE_ADMIN_PROFILE',
-        targetType: 'USER',
-        targetId: req.user!.id,
-        payload: JSON.stringify({ updatedFields: Object.keys(updateData) })
-      }
-    });
-
-    return res.json({ success: true, message: 'Profile updated successfully', user: updated });
+    return res.json({ success: true, message: 'Profile updated successfully', data: admin.toJSON() });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -220,8 +193,8 @@ adminRouter.get('/stats', async (req, res) => {
       startDate = new Date(now.getTime() - 90 * 24 * 3600 * 1000);
     }
 
-    const dateFilter = startDate ? { createdAt: { gte: startDate } } : {};
-    const bidDateFilter = startDate ? { acceptedAt: { gte: startDate } } : {};
+    const dateFilter = startDate ? { createdAt: { $gte: startDate } } : {};
+    const bidDateFilter = startDate ? { acceptedAt: { $gte: startDate } } : {};
 
     const [
       totalStudents,
@@ -237,98 +210,78 @@ adminRouter.get('/stats', async (req, res) => {
       pendingDecisions,
       totalBids,
       openDisputes,
-      categories
+      categories,
     ] = await Promise.all([
-      prisma.user.count({ where: { role: 'STUDENT', ...dateFilter } }),
-      prisma.user.count({ where: { role: 'STUDENT', isEmailVerified: true, ...dateFilter } }),
-      prisma.user.count({ where: { role: 'STUDENT', isEmailVerified: false, ...dateFilter } }),
-      prisma.user.count({ where: { role: 'STUDENT', isSuspended: true, ...dateFilter } }),
-      prisma.auctionListing.count({ where: dateFilter }),
-      prisma.auctionListing.count({ where: { status: 'ACTIVE', closingTime: { gt: now } } }),
-      prisma.auctionListing.count({ where: { status: 'SCHEDULED' } }),
-      prisma.auctionListing.count({
-        where: {
-          status: 'ACTIVE',
-          closingTime: {
-            gt: now,
-            lte: new Date(now.getTime() + 3 * 3600 * 1000)
-          }
-        }
+      User.countDocuments({ role: 'STUDENT', ...dateFilter }),
+      User.countDocuments({ role: 'STUDENT', isEmailVerified: true, ...dateFilter }),
+      User.countDocuments({ role: 'STUDENT', isEmailVerified: false, ...dateFilter }),
+      User.countDocuments({ role: 'STUDENT', isSuspended: true, ...dateFilter }),
+      AuctionListing.countDocuments(dateFilter),
+      AuctionListing.countDocuments({ status: 'ACTIVE', closingTime: { $gt: now } }),
+      AuctionListing.countDocuments({ status: 'SCHEDULED' }),
+      AuctionListing.countDocuments({
+        status: 'ACTIVE',
+        closingTime: { $gt: now, $lte: new Date(now.getTime() + 3 * 3600 * 1000) },
       }),
-      prisma.auctionListing.count({ where: { status: 'COMPLETED', ...dateFilter } }),
-      prisma.auctionListing.count({ where: { status: 'UNSOLD', ...dateFilter } }),
-      prisma.auctionListing.count({ where: { status: 'PENDING_SELLER_DECISION' } }),
-      prisma.bid.count({ where: bidDateFilter }),
-      prisma.dispute.count({ where: { status: { in: ['OPEN', 'UNDER_REVIEW', 'WAITING_FOR_INFORMATION'] } } }),
-      prisma.category.findMany({
-        include: {
-          _count: { select: { listings: true } }
-        }
-      })
+      AuctionListing.countDocuments({ status: 'COMPLETED', ...dateFilter }),
+      AuctionListing.countDocuments({ status: 'UNSOLD', ...dateFilter }),
+      AuctionListing.countDocuments({ status: 'PENDING_SELLER_DECISION' }),
+      Bid.countDocuments(bidDateFilter),
+      Dispute.countDocuments({ status: { $in: ['OPEN', 'UNDER_REVIEW', 'WAITING_FOR_INFORMATION'] } }),
+      Category.find().lean(),
     ]);
 
     // Volume calculation
-    const completedListings = await prisma.auctionListing.findMany({
-      where: { status: 'COMPLETED', ...dateFilter },
-      select: { currentLeadingBidInCents: true }
-    });
-    const totalVolumeInCents = completedListings.reduce((acc, curr) => acc + curr.currentLeadingBidInCents, 0);
+    const volumeAgg = await AuctionListing.aggregate([
+      { $match: { status: 'COMPLETED', ...dateFilter } },
+      { $group: { _id: null, totalVolume: { $sum: '$currentLeadingBidInCents' } } },
+    ]);
+    const totalVolumeInCents = volumeAgg.length > 0 ? volumeAgg[0].totalVolume : 0;
 
     // Recent items
     const [recentStudents, recentListings, recentBids, recentAuditLogs] = await Promise.all([
-      prisma.user.findMany({
-        where: { role: 'STUDENT' },
-        orderBy: { createdAt: 'desc' },
-        take: 5,
-        select: {
-          id: true,
-          fullName: true,
-          campusAlias: true,
-          email: true,
-          studentId: true,
-          isEmailVerified: true,
-          isSuspended: true,
-          createdAt: true
-        }
-      }),
-      prisma.auctionListing.findMany({
-        orderBy: { createdAt: 'desc' },
-        take: 5,
-        include: {
-          category: { select: { name: true } },
-          seller: { select: { campusAlias: true } }
-        }
-      }),
-      prisma.bid.findMany({
-        orderBy: { acceptedAt: 'desc' },
-        take: 5,
-        include: {
-          bidder: { select: { campusAlias: true, studentId: true } },
-          listing: { select: { id: true, title: true } }
-        }
-      }),
-      prisma.auditLog.findMany({
-        orderBy: { createdAt: 'desc' },
-        take: 6,
-        include: {
-          actor: { select: { campusAlias: true } }
-        }
-      })
+      User.find({ role: 'STUDENT' })
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .select('fullName campusAlias email studentId isEmailVerified isSuspended createdAt')
+        .lean(),
+      AuctionListing.find()
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .populate('category', 'name')
+        .populate('seller', 'campusAlias')
+        .lean(),
+      Bid.find()
+        .sort({ acceptedAt: -1 })
+        .limit(5)
+        .populate('bidder', 'campusAlias studentId')
+        .populate('listing', 'title')
+        .lean(),
+      AuditLog.find()
+        .sort({ createdAt: -1 })
+        .limit(6)
+        .populate('actor', 'campusAlias')
+        .lean(),
     ]);
 
-    // Chart distribution: category-wise
-    const categoryDistribution = categories.map(c => ({
+    // Compute category listing counts
+    const catCounts = await AuctionListing.aggregate([
+      { $group: { _id: '$categoryId', count: { $sum: 1 } } },
+    ]);
+    const catCountMap = new Map<string, number>();
+    catCounts.forEach((c: any) => catCountMap.set(c._id.toString(), c.count));
+
+    const categoryDistribution = categories.map((c: any) => ({
       name: c.name,
       slug: c.slug,
-      count: c._count.listings
+      count: catCountMap.get(c._id.toString()) || 0,
     }));
 
-    // Chart distribution: outcomes
     const outcomeDistribution = [
       { name: 'Active', count: activeAuctions },
       { name: 'Completed', count: completedAuctions },
       { name: 'Unsold', count: unsoldAuctions },
-      { name: 'Closing Soon', count: closingSoonAuctions }
+      { name: 'Closing Soon', count: closingSoonAuctions },
     ];
 
     return res.json({
@@ -350,11 +303,11 @@ adminRouter.get('/stats', async (req, res) => {
         openDisputes,
         categoryDistribution,
         outcomeDistribution,
-        recentStudents,
-        recentListings,
-        recentBids,
-        recentAuditLogs
-      }
+        recentStudents: recentStudents.map((s: any) => ({ ...s, id: s._id.toString() })),
+        recentListings: recentListings.map((l: any) => ({ ...l, id: l._id.toString() })),
+        recentBids: recentBids.map((b: any) => ({ ...b, id: b._id.toString() })),
+        recentAuditLogs: recentAuditLogs.map((a: any) => ({ ...a, id: a._id.toString() })),
+      },
     });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
@@ -362,7 +315,7 @@ adminRouter.get('/stats', async (req, res) => {
 });
 
 // ==========================================
-// 3. STUDENT MANAGEMENT (HIGHEST PRIORITY)
+// 3. STUDENT MANAGEMENT
 // ==========================================
 
 // 3.1 List Students with Search, Filters, Sorting & Pagination
@@ -374,89 +327,99 @@ adminRouter.get('/students', async (req, res) => {
       department = '',
       sort = 'newest',
       page = '1',
-      limit = '10'
+      limit = '10',
     } = req.query;
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const take = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 10));
     const skip = (pageNum - 1) * take;
 
-    const where: any = { role: 'STUDENT' };
+    const filter: any = { role: 'STUDENT' };
 
     if (status === 'VERIFIED') {
-      where.isEmailVerified = true;
-      where.isSuspended = false;
+      filter.isEmailVerified = true;
+      filter.isSuspended = false;
     } else if (status === 'PENDING') {
-      where.isEmailVerified = false;
+      filter.isEmailVerified = false;
     } else if (status === 'SUSPENDED') {
-      where.isSuspended = true;
+      filter.isSuspended = true;
     }
 
     if (department) {
-      where.department = { contains: department as string };
+      filter.department = { $regex: department as string, $options: 'i' };
     }
 
     if (search) {
       const q = (search as string).trim();
-      where.OR = [
-        { fullName: { contains: q } },
-        { campusAlias: { contains: q } },
-        { email: { contains: q } },
-        { studentId: { contains: q } },
-        { department: { contains: q } }
+      const reg = new RegExp(q, 'i');
+      filter.$or = [
+        { fullName: reg },
+        { campusAlias: reg },
+        { email: reg },
+        { studentId: reg },
+        { department: reg },
       ];
     }
 
-    let orderBy: any = { createdAt: 'desc' };
-    if (sort === 'oldest') orderBy = { createdAt: 'asc' };
-    if (sort === 'name_asc') orderBy = { fullName: 'asc' };
-    if (sort === 'name_desc') orderBy = { fullName: 'desc' };
+    let sortOption: any = { createdAt: -1 };
+    if (sort === 'oldest') sortOption = { createdAt: 1 };
+    if (sort === 'name_asc') sortOption = { fullName: 1 };
+    if (sort === 'name_desc') sortOption = { fullName: -1 };
 
     const [total, students] = await Promise.all([
-      prisma.user.count({ where }),
-      prisma.user.findMany({
-        where,
-        take,
-        skip,
-        orderBy,
-        select: {
-          id: true,
-          email: true,
-          fullName: true,
-          campusAlias: true,
-          studentId: true,
-          department: true,
-          college: true,
-          avatarUrl: true,
-          role: true,
-          isEmailVerified: true,
-          verificationNotes: true,
-          isSuspended: true,
-          suspensionReason: true,
-          suspendedUntil: true,
-          lastLogin: true,
-          createdAt: true,
-          updatedAt: true,
-          _count: {
-            select: {
-              listings: true,
-              bids: true,
-              outcomesWon: true
-            }
-          }
-        }
-      })
+      User.countDocuments(filter),
+      User.find(filter).sort(sortOption).skip(skip).limit(take).lean(),
     ]);
+
+    const studentIds = students.map((s: any) => s._id);
+
+    // Compute counts for listings, bids, outcomesWon
+    const [listingCounts, bidCounts, wonCounts] = await Promise.all([
+      AuctionListing.aggregate([
+        { $match: { sellerId: { $in: studentIds } } },
+        { $group: { _id: '$sellerId', count: { $sum: 1 } } },
+      ]),
+      Bid.aggregate([
+        { $match: { bidderId: { $in: studentIds } } },
+        { $group: { _id: '$bidderId', count: { $sum: 1 } } },
+      ]),
+      AuctionOutcome.aggregate([
+        { $match: { winnerId: { $in: studentIds } } },
+        { $group: { _id: '$winnerId', count: { $sum: 1 } } },
+      ]),
+    ]);
+
+    const listingMap = new Map<string, number>();
+    listingCounts.forEach((c: any) => listingMap.set(c._id.toString(), c.count));
+
+    const bidMap = new Map<string, number>();
+    bidCounts.forEach((c: any) => bidMap.set(c._id.toString(), c.count));
+
+    const wonMap = new Map<string, number>();
+    wonCounts.forEach((c: any) => wonMap.set(c._id.toString(), c.count));
+
+    const formatted = students.map((s: any) => {
+      const idStr = s._id.toString();
+      return {
+        ...s,
+        id: idStr,
+        _count: {
+          listings: listingMap.get(idStr) || 0,
+          bids: bidMap.get(idStr) || 0,
+          outcomesWon: wonMap.get(idStr) || 0,
+        },
+      };
+    });
 
     return res.json({
       success: true,
-      data: students,
+      data: formatted,
       pagination: {
         page: pageNum,
         limit: take,
         total,
-        totalPages: Math.ceil(total / take)
-      }
+        totalPages: Math.ceil(total / take),
+      },
     });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
@@ -467,72 +430,90 @@ adminRouter.get('/students', async (req, res) => {
 adminRouter.get('/students/export', async (req, res) => {
   try {
     const { search = '', status = 'ALL', department = '' } = req.query;
-    const where: any = { role: 'STUDENT' };
+    const filter: any = { role: 'STUDENT' };
 
     if (status === 'VERIFIED') {
-      where.isEmailVerified = true;
-      where.isSuspended = false;
+      filter.isEmailVerified = true;
+      filter.isSuspended = false;
     } else if (status === 'PENDING') {
-      where.isEmailVerified = false;
+      filter.isEmailVerified = false;
     } else if (status === 'SUSPENDED') {
-      where.isSuspended = true;
+      filter.isSuspended = true;
     }
 
     if (department) {
-      where.department = { contains: department as string };
+      filter.department = { $regex: department as string, $options: 'i' };
     }
 
     if (search) {
       const q = (search as string).trim();
-      where.OR = [
-        { fullName: { contains: q } },
-        { campusAlias: { contains: q } },
-        { email: { contains: q } },
-        { studentId: { contains: q } }
-      ];
+      const reg = new RegExp(q, 'i');
+      filter.$or = [{ fullName: reg }, { campusAlias: reg }, { email: reg }, { studentId: reg }];
     }
 
-    const students = await prisma.user.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      select: {
-        studentId: true,
-        fullName: true,
-        campusAlias: true,
-        email: true,
-        department: true,
-        college: true,
-        isEmailVerified: true,
-        isSuspended: true,
-        suspensionReason: true,
-        createdAt: true,
-        lastLogin: true,
-        _count: { select: { listings: true, bids: true, outcomesWon: true } }
-      }
-    });
+    const students = await User.find(filter).sort({ createdAt: -1 }).lean();
+    const studentIds = students.map((s: any) => s._id);
+
+    const [listingCounts, bidCounts, wonCounts] = await Promise.all([
+      AuctionListing.aggregate([
+        { $match: { sellerId: { $in: studentIds } } },
+        { $group: { _id: '$sellerId', count: { $sum: 1 } } },
+      ]),
+      Bid.aggregate([
+        { $match: { bidderId: { $in: studentIds } } },
+        { $group: { _id: '$bidderId', count: { $sum: 1 } } },
+      ]),
+      AuctionOutcome.aggregate([
+        { $match: { winnerId: { $in: studentIds } } },
+        { $group: { _id: '$winnerId', count: { $sum: 1 } } },
+      ]),
+    ]);
+
+    const listingMap = new Map<string, number>();
+    listingCounts.forEach((c: any) => listingMap.set(c._id.toString(), c.count));
+
+    const bidMap = new Map<string, number>();
+    bidCounts.forEach((c: any) => bidMap.set(c._id.toString(), c.count));
+
+    const wonMap = new Map<string, number>();
+    wonCounts.forEach((c: any) => wonMap.set(c._id.toString(), c.count));
 
     const csvRows = [
-      ['Student ID', 'Full Name', 'Campus Alias', 'Email', 'Department', 'College', 'Verification Status', 'Account Status', 'Total Listings', 'Total Bids', 'Won Auctions', 'Registered At']
+      [
+        'Student ID',
+        'Full Name',
+        'Campus Alias',
+        'Email',
+        'Department',
+        'College',
+        'Verification Status',
+        'Account Status',
+        'Total Listings',
+        'Total Bids',
+        'Won Auctions',
+        'Registered At',
+      ],
     ];
 
     for (const s of students) {
+      const idStr = s._id.toString();
       csvRows.push([
-        s.studentId,
-        `"${s.fullName.replace(/"/g, '""')}"`,
-        s.campusAlias,
+        s.studentId || '',
+        `"${(s.fullName || '').replace(/"/g, '""')}"`,
+        s.campusAlias || '',
         s.email,
         `"${(s.department || '').replace(/"/g, '""')}"`,
         `"${(s.college || '').replace(/"/g, '""')}"`,
         s.isEmailVerified ? 'VERIFIED' : 'PENDING',
         s.isSuspended ? 'SUSPENDED' : 'ACTIVE',
-        s._count.listings.toString(),
-        s._count.bids.toString(),
-        s._count.outcomesWon.toString(),
-        s.createdAt.toISOString()
+        (listingMap.get(idStr) || 0).toString(),
+        (bidMap.get(idStr) || 0).toString(),
+        (wonMap.get(idStr) || 0).toString(),
+        s.createdAt ? new Date(s.createdAt).toISOString() : '',
       ]);
     }
 
-    const csvContent = csvRows.map(row => row.join(',')).join('\n');
+    const csvContent = csvRows.map((row) => row.join(',')).join('\n');
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="campus_students_export.csv"');
     return res.send(csvContent);
@@ -544,82 +525,87 @@ adminRouter.get('/students/export', async (req, res) => {
 // 3.3 Get Single Student Profile & Activity Details
 adminRouter.get('/students/:id', async (req, res) => {
   try {
-    const student = await prisma.user.findUnique({
-      where: { id: req.params.id },
-      include: {
-        listings: {
-          orderBy: { createdAt: 'desc' },
-          include: {
-            category: { select: { name: true } },
-            images: { take: 1, orderBy: { displayOrder: 'asc' } },
-            _count: { select: { bids: true } }
-          }
-        },
-        bids: {
-          orderBy: { acceptedAt: 'desc' },
-          take: 20,
-          include: {
-            listing: { select: { id: true, title: true, status: true, currentLeadingBidInCents: true } }
-          }
-        },
-        outcomesWon: {
-          include: {
-            listing: {
-              select: {
-                id: true,
-                title: true,
-                pickupLocation: true,
-                seller: { select: { campusAlias: true, email: true } }
-              }
-            }
-          }
-        },
-        disputesReported: {
-          orderBy: { createdAt: 'desc' },
-          include: {
-            listing: { select: { id: true, title: true } }
-          }
-        },
-        disputesAgainst: {
-          orderBy: { createdAt: 'desc' },
-          include: {
-            reporter: { select: { campusAlias: true, studentId: true } }
-          }
-        },
-        _count: {
-          select: {
-            listings: true,
-            bids: true,
-            questions: true,
-            outcomesWon: true
-          }
-        }
-      }
-    });
+    const student = await User.findById(req.params.id).lean();
 
     if (!student) {
       return res.status(404).json({ success: false, message: 'Student not found' });
     }
 
-    // Associated audit logs
-    const auditLogs = await prisma.auditLog.findMany({
-      where: {
-        OR: [
-          { targetId: student.id },
-          { actorId: student.id }
-        ]
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 20,
-      include: { actor: { select: { campusAlias: true } } }
-    });
+    const studentObjectId = new mongoose.Types.ObjectId(student._id);
+
+    const [
+      listings,
+      bids,
+      outcomesWon,
+      disputesReported,
+      disputesAgainst,
+      auditLogs,
+      counts,
+    ] = await Promise.all([
+      AuctionListing.find({ sellerId: studentObjectId })
+        .sort({ createdAt: -1 })
+        .populate('category', 'name')
+        .lean(),
+      Bid.find({ bidderId: studentObjectId })
+        .sort({ acceptedAt: -1 })
+        .limit(20)
+        .populate('listing', 'id title status currentLeadingBidInCents')
+        .lean(),
+      AuctionOutcome.find({ winnerId: studentObjectId })
+        .populate({
+          path: 'listing',
+          select: 'id title pickupLocation',
+          populate: { path: 'seller', select: 'campusAlias email' },
+        })
+        .lean(),
+      Dispute.find({ reporterId: studentObjectId })
+        .sort({ createdAt: -1 })
+        .populate('listing', 'id title')
+        .lean(),
+      Dispute.find({ reportedUserId: studentObjectId })
+        .sort({ createdAt: -1 })
+        .populate('reporter', 'campusAlias studentId')
+        .lean(),
+      AuditLog.find({
+        $or: [{ targetId: student._id.toString() }, { actorId: studentObjectId }],
+      })
+        .sort({ createdAt: -1 })
+        .limit(20)
+        .populate('actor', 'campusAlias')
+        .lean(),
+      Promise.all([
+        AuctionListing.countDocuments({ sellerId: studentObjectId }),
+        Bid.countDocuments({ bidderId: studentObjectId }),
+        Question.countDocuments({ askerId: studentObjectId }),
+        AuctionOutcome.countDocuments({ winnerId: studentObjectId }),
+      ]),
+    ]);
+
+    const formattedListings = listings.map((l: any) => ({
+      ...l,
+      id: l._id.toString(),
+      images: (l.images || []).slice(0, 1),
+      _count: { bids: 0 },
+    }));
 
     return res.json({
       success: true,
       data: {
         ...student,
-        auditLogs
-      }
+        id: student._id.toString(),
+        listings: formattedListings,
+        bids: bids.map((b: any) => ({ ...b, id: b._id.toString() })),
+        outcomesWon: outcomesWon.map((o: any) => ({ ...o, id: o._id.toString() })),
+        disputesReported: disputesReported.map((d: any) => ({ ...d, id: d._id.toString() })),
+        disputesAgainst: disputesAgainst.map((d: any) => ({ ...d, id: d._id.toString() })),
+        auditLogs: auditLogs.map((a: any) => ({ ...a, id: a._id.toString() })),
+        _count: {
+          listings: counts[0],
+          bids: counts[1],
+          questions: counts[2],
+          outcomesWon: counts[3],
+        },
+      },
     });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
@@ -630,35 +616,36 @@ adminRouter.get('/students/:id', async (req, res) => {
 adminRouter.patch('/students/:id/verify', async (req: AuthRequest, res) => {
   try {
     const { notes } = req.body;
-    const user = await prisma.user.update({
-      where: { id: req.params.id },
-      data: {
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      {
         isEmailVerified: true,
-        verificationNotes: notes || 'Verified by University Administrator'
-      }
+        verificationStatus: 'VERIFIED',
+        verificationNotes: notes || 'Verified by University Administrator',
+      },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Student not found' });
+    }
+
+    await Notification.create({
+      userId: user._id,
+      type: 'SYSTEM',
+      title: 'Institutional Verification Approved',
+      message: 'Your student account has been verified by the campus administrator. You have full access to create listings and place bids.',
     });
 
-    // Notify student
-    await prisma.notification.create({
-      data: {
-        userId: user.id,
-        type: 'SYSTEM',
-        title: 'Institutional Verification Approved',
-        message: 'Your student account has been verified by the campus administrator. You have full access to create listings and place bids.'
-      }
+    await AuditLog.create({
+      actorId: new mongoose.Types.ObjectId(req.user!.id),
+      action: 'VERIFY_STUDENT',
+      targetType: 'USER',
+      targetId: user._id.toString(),
+      payload: { notes, studentId: user.studentId, alias: user.campusAlias },
     });
 
-    await prisma.auditLog.create({
-      data: {
-        actorId: req.user!.id,
-        action: 'VERIFY_STUDENT',
-        targetType: 'USER',
-        targetId: user.id,
-        payload: JSON.stringify({ notes, studentId: user.studentId, alias: user.campusAlias })
-      }
-    });
-
-    return res.json({ success: true, data: user, message: 'Student account verified successfully' });
+    return res.json({ success: true, data: user.toJSON(), message: 'Student account verified successfully' });
   } catch (error: any) {
     return res.status(400).json({ success: false, message: error.message });
   }
@@ -672,34 +659,36 @@ adminRouter.patch('/students/:id/reject-verification', async (req: AuthRequest, 
       return res.status(400).json({ success: false, message: 'Rejection reason is required' });
     }
 
-    const user = await prisma.user.update({
-      where: { id: req.params.id },
-      data: {
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      {
         isEmailVerified: false,
-        verificationNotes: `Verification rejected: ${reason.trim()}`
-      }
+        verificationStatus: 'REJECTED',
+        verificationNotes: `Verification rejected: ${reason.trim()}`,
+      },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Student not found' });
+    }
+
+    await Notification.create({
+      userId: user._id,
+      type: 'SYSTEM',
+      title: 'Student Verification Rejected',
+      message: `Your verification request was rejected: ${reason.trim()}. Please review your student credentials or contact administration.`,
     });
 
-    await prisma.notification.create({
-      data: {
-        userId: user.id,
-        type: 'SYSTEM',
-        title: 'Student Verification Rejected',
-        message: `Your verification request was rejected: ${reason.trim()}. Please review your student credentials or contact administration.`
-      }
+    await AuditLog.create({
+      actorId: new mongoose.Types.ObjectId(req.user!.id),
+      action: 'REJECT_VERIFICATION',
+      targetType: 'USER',
+      targetId: user._id.toString(),
+      payload: { reason: reason.trim(), studentId: user.studentId },
     });
 
-    await prisma.auditLog.create({
-      data: {
-        actorId: req.user!.id,
-        action: 'REJECT_VERIFICATION',
-        targetType: 'USER',
-        targetId: user.id,
-        payload: JSON.stringify({ reason: reason.trim(), studentId: user.studentId })
-      }
-    });
-
-    return res.json({ success: true, data: user, message: 'Student verification rejected' });
+    return res.json({ success: true, data: user.toJSON(), message: 'Student verification rejected' });
   } catch (error: any) {
     return res.status(400).json({ success: false, message: error.message });
   }
@@ -718,36 +707,39 @@ adminRouter.patch('/students/:id/suspend', async (req: AuthRequest, res) => {
       suspendedUntil = new Date(Date.now() + parseInt(durationDays, 10) * 24 * 3600 * 1000);
     }
 
-    const user = await prisma.user.update({
-      where: { id: req.params.id },
-      data: {
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      {
         isSuspended: true,
+        accountStatus: 'SUSPENDED',
         suspensionReason: reason.trim(),
-        suspendedUntil
-      }
+        suspendedUntil,
+      },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Student not found' });
+    }
+
+    await Notification.create({
+      userId: user._id,
+      type: 'SYSTEM',
+      title: 'Account Suspended',
+      message: `Your account has been suspended by administration. Reason: ${reason.trim()}${
+        suspendedUntil ? `. Duration: until ${suspendedUntil.toLocaleDateString()}` : '.'
+      }`,
     });
 
-    // Notify student
-    await prisma.notification.create({
-      data: {
-        userId: user.id,
-        type: 'SYSTEM',
-        title: 'Account Suspended',
-        message: `Your account has been suspended by administration. Reason: ${reason.trim()}${suspendedUntil ? `. Duration: until ${suspendedUntil.toLocaleDateString()}` : '.'}`
-      }
+    await AuditLog.create({
+      actorId: new mongoose.Types.ObjectId(req.user!.id),
+      action: 'SUSPEND_STUDENT',
+      targetType: 'USER',
+      targetId: user._id.toString(),
+      payload: { reason: reason.trim(), durationDays, studentId: user.studentId },
     });
 
-    await prisma.auditLog.create({
-      data: {
-        actorId: req.user!.id,
-        action: 'SUSPEND_STUDENT',
-        targetType: 'USER',
-        targetId: user.id,
-        payload: JSON.stringify({ reason: reason.trim(), durationDays, studentId: user.studentId })
-      }
-    });
-
-    return res.json({ success: true, data: user, message: 'Student account suspended' });
+    return res.json({ success: true, data: user.toJSON(), message: 'Student account suspended' });
   } catch (error: any) {
     return res.status(400).json({ success: false, message: error.message });
   }
@@ -758,35 +750,37 @@ adminRouter.patch('/students/:id/reactivate', async (req: AuthRequest, res) => {
   try {
     const { reason } = req.body;
 
-    const user = await prisma.user.update({
-      where: { id: req.params.id },
-      data: {
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      {
         isSuspended: false,
+        accountStatus: 'ACTIVE',
         suspensionReason: null,
-        suspendedUntil: null
-      }
+        suspendedUntil: null,
+      },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Student not found' });
+    }
+
+    await Notification.create({
+      userId: user._id,
+      type: 'SYSTEM',
+      title: 'Account Reactivated',
+      message: 'Your campus account has been reactivated. You may resume participating in campus auctions.',
     });
 
-    await prisma.notification.create({
-      data: {
-        userId: user.id,
-        type: 'SYSTEM',
-        title: 'Account Reactivated',
-        message: 'Your campus account has been reactivated. You may resume participating in campus auctions.'
-      }
+    await AuditLog.create({
+      actorId: new mongoose.Types.ObjectId(req.user!.id),
+      action: 'REACTIVATE_STUDENT',
+      targetType: 'USER',
+      targetId: user._id.toString(),
+      payload: { reason: reason || 'Reactivated by admin', studentId: user.studentId },
     });
 
-    await prisma.auditLog.create({
-      data: {
-        actorId: req.user!.id,
-        action: 'REACTIVATE_STUDENT',
-        targetType: 'USER',
-        targetId: user.id,
-        payload: JSON.stringify({ reason: reason || 'Reactivated by admin', studentId: user.studentId })
-      }
-    });
-
-    return res.json({ success: true, data: user, message: 'Student account reactivated' });
+    return res.json({ success: true, data: user.toJSON(), message: 'Student account reactivated' });
   } catch (error: any) {
     return res.status(400).json({ success: false, message: error.message });
   }
@@ -796,7 +790,7 @@ adminRouter.patch('/students/:id/reactivate', async (req: AuthRequest, res) => {
 adminRouter.delete('/students/:id', async (req: AuthRequest, res) => {
   try {
     const userId = req.params.id;
-    const targetUser = await prisma.user.findUnique({ where: { id: userId } });
+    const targetUser = await User.findById(userId);
 
     if (!targetUser) {
       return res.status(404).json({ success: false, message: 'Student account not found' });
@@ -806,30 +800,32 @@ adminRouter.delete('/students/:id', async (req: AuthRequest, res) => {
       return res.status(403).json({ success: false, message: 'Cannot delete an administrator account' });
     }
 
-    await prisma.$transaction(async (tx) => {
-      await tx.notification.deleteMany({ where: { userId } });
-      await tx.savedListing.deleteMany({ where: { userId } });
-      await tx.savedSearch.deleteMany({ where: { userId } });
-      await tx.autoBidLimit.deleteMany({ where: { bidderId: userId } });
-      await tx.questionAnswer.deleteMany({ where: { sellerId: userId } });
-      await tx.question.deleteMany({ where: { askerId: userId } });
-      await tx.dispute.deleteMany({ where: { OR: [{ reporterId: userId }, { reportedUserId: userId }] } });
-      await tx.bid.deleteMany({ where: { bidderId: userId } });
-      await tx.auctionListing.deleteMany({ where: { sellerId: userId } });
-      await tx.user.delete({ where: { id: userId } });
+    const userObjectId = new mongoose.Types.ObjectId(userId);
+
+    await Promise.all([
+      Notification.deleteMany({ userId: userObjectId }),
+      SavedListing.deleteMany({ userId: userObjectId }),
+      SavedSearch.deleteMany({ userId: userObjectId }),
+      AutoBidLimit.deleteMany({ bidderId: userObjectId }),
+      Question.deleteMany({ askerId: userObjectId }),
+      Dispute.deleteMany({ $or: [{ reporterId: userObjectId }, { reportedUserId: userObjectId }] }),
+      Bid.deleteMany({ bidderId: userObjectId }),
+      AuctionListing.deleteMany({ sellerId: userObjectId }),
+      User.findByIdAndDelete(userId),
+    ]);
+
+    await AuditLog.create({
+      actorId: new mongoose.Types.ObjectId(req.user!.id),
+      action: 'DELETE_STUDENT',
+      targetType: 'USER',
+      targetId: userId,
+      payload: { email: targetUser.email, studentId: targetUser.studentId, alias: targetUser.campusAlias },
     });
 
-    await prisma.auditLog.create({
-      data: {
-        actorId: req.user!.id,
-        action: 'DELETE_STUDENT',
-        targetType: 'USER',
-        targetId: userId,
-        payload: JSON.stringify({ email: targetUser.email, studentId: targetUser.studentId, alias: targetUser.campusAlias })
-      }
+    return res.json({
+      success: true,
+      message: `Student account for ${targetUser.fullName} has been permanently deleted`,
     });
-
-    return res.json({ success: true, message: `Student account for ${targetUser.fullName} has been permanently deleted` });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -837,43 +833,68 @@ adminRouter.delete('/students/:id', async (req: AuthRequest, res) => {
 
 // Backward compatibility routes for existing student list actions
 adminRouter.get('/users', async (req, res) => {
-  const users = await prisma.user.findMany({
-    where: { role: 'STUDENT' },
-    orderBy: { createdAt: 'desc' },
-    select: {
-      id: true,
-      email: true,
-      fullName: true,
-      campusAlias: true,
-      studentId: true,
-      role: true,
-      isEmailVerified: true,
-      isSuspended: true,
-      createdAt: true,
-      _count: { select: { listings: true, bids: true } },
-    },
-  });
-  return res.json({ success: true, data: users });
+  try {
+    const users = await User.find({ role: 'STUDENT' })
+      .sort({ createdAt: -1 })
+      .select('email fullName campusAlias studentId role isEmailVerified isSuspended createdAt')
+      .lean();
+
+    const userIds = users.map((u: any) => u._id);
+    const [listingCounts, bidCounts] = await Promise.all([
+      AuctionListing.aggregate([
+        { $match: { sellerId: { $in: userIds } } },
+        { $group: { _id: '$sellerId', count: { $sum: 1 } } },
+      ]),
+      Bid.aggregate([
+        { $match: { bidderId: { $in: userIds } } },
+        { $group: { _id: '$bidderId', count: { $sum: 1 } } },
+      ]),
+    ]);
+
+    const listingMap = new Map<string, number>();
+    listingCounts.forEach((c: any) => listingMap.set(c._id.toString(), c.count));
+
+    const bidMap = new Map<string, number>();
+    bidCounts.forEach((c: any) => bidMap.set(c._id.toString(), c.count));
+
+    const formatted = users.map((u: any) => ({
+      ...u,
+      id: u._id.toString(),
+      _count: {
+        listings: listingMap.get(u._id.toString()) || 0,
+        bids: bidMap.get(u._id.toString()) || 0,
+      },
+    }));
+
+    return res.json({ success: true, data: formatted });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
 });
+
 adminRouter.patch('/users/:id/verify', async (req: AuthRequest, res) => {
   const { isVerified } = req.body;
-  const user = await prisma.user.update({
-    where: { id: req.params.id },
-    data: { isEmailVerified: Boolean(isVerified) },
-  });
-  return res.json({ success: true, data: user });
+  const user = await User.findByIdAndUpdate(
+    req.params.id,
+    { isEmailVerified: Boolean(isVerified) },
+    { new: true }
+  );
+  return res.json({ success: true, data: user?.toJSON() });
 });
+
 adminRouter.patch('/users/:id/status', async (req: AuthRequest, res) => {
   const { isSuspended } = req.body;
-  const user = await prisma.user.update({
-    where: { id: req.params.id },
-    data: { isSuspended: Boolean(isSuspended) },
-  });
-  return res.json({ success: true, data: user });
+  const user = await User.findByIdAndUpdate(
+    req.params.id,
+    { isSuspended: Boolean(isSuspended) },
+    { new: true }
+  );
+  return res.json({ success: true, data: user?.toJSON() });
 });
+
 adminRouter.delete('/users/:id', async (req: AuthRequest, res) => {
   const userId = req.params.id;
-  await prisma.user.delete({ where: { id: userId } });
+  await User.findByIdAndDelete(userId);
   return res.json({ success: true, message: 'User deleted' });
 });
 
@@ -889,55 +910,80 @@ adminRouter.get('/listings', async (req, res) => {
       status = 'ALL',
       category = '',
       page = '1',
-      limit = '12'
+      limit = '12',
     } = req.query;
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const take = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 12));
     const skip = (pageNum - 1) * take;
 
-    const where: any = {};
+    const filter: any = {};
     if (status !== 'ALL') {
-      where.status = status;
+      filter.status = status;
     }
     if (category) {
-      where.category = { slug: category as string };
+      const cat = await Category.findOne({ slug: category as string });
+      if (cat) {
+        filter.categoryId = cat._id;
+      }
     }
     if (search) {
       const q = (search as string).trim();
-      where.OR = [
-        { title: { contains: q } },
-        { description: { contains: q } },
-        { pickupLocation: { contains: q } },
-        { seller: { campusAlias: { contains: q } } }
-      ];
+      const reg = new RegExp(q, 'i');
+      filter.$or = [{ title: reg }, { description: reg }, { pickupLocation: reg }];
     }
 
     const [total, listings] = await Promise.all([
-      prisma.auctionListing.count({ where }),
-      prisma.auctionListing.findMany({
-        where,
-        take,
-        skip,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          category: { select: { id: true, name: true, slug: true } },
-          seller: { select: { id: true, fullName: true, campusAlias: true, email: true, studentId: true } },
-          images: { take: 1, orderBy: { displayOrder: 'asc' } },
-          _count: { select: { bids: true, questions: true } }
-        }
-      })
+      AuctionListing.countDocuments(filter),
+      AuctionListing.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(take)
+        .populate('category', 'id name slug')
+        .populate('seller', 'id fullName campusAlias email studentId')
+        .lean(),
     ]);
+
+    const listingIds = listings.map((l: any) => l._id);
+    const [bidCounts, questionCounts] = await Promise.all([
+      Bid.aggregate([
+        { $match: { listingId: { $in: listingIds } } },
+        { $group: { _id: '$listingId', count: { $sum: 1 } } },
+      ]),
+      Question.aggregate([
+        { $match: { listingId: { $in: listingIds } } },
+        { $group: { _id: '$listingId', count: { $sum: 1 } } },
+      ]),
+    ]);
+
+    const bidMap = new Map<string, number>();
+    bidCounts.forEach((c: any) => bidMap.set(c._id.toString(), c.count));
+
+    const qMap = new Map<string, number>();
+    questionCounts.forEach((q: any) => qMap.set(q._id.toString(), q.count));
+
+    const formatted = listings.map((l: any) => {
+      const idStr = l._id.toString();
+      return {
+        ...l,
+        id: idStr,
+        images: (l.images || []).slice(0, 1),
+        _count: {
+          bids: bidMap.get(idStr) || 0,
+          questions: qMap.get(idStr) || 0,
+        },
+      };
+    });
 
     return res.json({
       success: true,
-      data: listings,
+      data: formatted,
       pagination: {
         page: pageNum,
         limit: take,
         total,
-        totalPages: Math.ceil(total / take)
-      }
+        totalPages: Math.ceil(total / take),
+      },
     });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
@@ -947,33 +993,39 @@ adminRouter.get('/listings', async (req, res) => {
 // 4.2 Single Listing Detail with Bids
 adminRouter.get('/listings/:id', async (req, res) => {
   try {
-    const listing = await prisma.auctionListing.findUnique({
-      where: { id: req.params.id },
-      include: {
-        category: true,
-        seller: { select: { id: true, fullName: true, campusAlias: true, email: true, studentId: true } },
-        images: { orderBy: { displayOrder: 'asc' } },
-        bids: {
-          orderBy: { acceptedAt: 'desc' },
-          include: { bidder: { select: { id: true, campusAlias: true, studentId: true } } }
-        },
-        questions: {
-          orderBy: { createdAt: 'desc' },
-          include: {
-            asker: { select: { campusAlias: true } },
-            answers: true
-          }
-        },
-        outcome: true,
-        handover: true
-      }
-    });
+    const listing = await AuctionListing.findById(req.params.id)
+      .populate('category')
+      .populate('seller', 'id fullName campusAlias email studentId')
+      .lean();
 
     if (!listing) {
       return res.status(404).json({ success: false, message: 'Listing not found' });
     }
 
-    return res.json({ success: true, data: listing });
+    const [bids, questions, outcome, handover] = await Promise.all([
+      Bid.find({ listingId: listing._id })
+        .sort({ acceptedAt: -1 })
+        .populate('bidder', 'id campusAlias studentId')
+        .lean(),
+      Question.find({ listingId: listing._id })
+        .sort({ createdAt: -1 })
+        .populate('asker', 'campusAlias')
+        .lean(),
+      AuctionOutcome.findOne({ listingId: listing._id }).lean(),
+      HandoverRecord.findOne({ listingId: listing._id }).lean(),
+    ]);
+
+    return res.json({
+      success: true,
+      data: {
+        ...listing,
+        id: listing._id.toString(),
+        bids: bids.map((b: any) => ({ ...b, id: b._id.toString() })),
+        questions: questions.map((q: any) => ({ ...q, id: q._id.toString() })),
+        outcome: outcome ? { ...outcome, id: outcome._id.toString() } : null,
+        handover: handover ? { ...handover, id: handover._id.toString() } : null,
+      },
+    });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -987,43 +1039,35 @@ adminRouter.patch('/listings/:id/moderate', async (req: AuthRequest, res) => {
       return res.status(400).json({ success: false, message: 'Target status is required' });
     }
 
-    const listing = await prisma.auctionListing.findUnique({
-      where: { id: req.params.id },
-      include: { seller: { select: { id: true, campusAlias: true } } }
-    });
-
+    const listing = await AuctionListing.findById(req.params.id).populate('seller', 'id campusAlias');
     if (!listing) {
       return res.status(404).json({ success: false, message: 'Listing not found' });
     }
 
-    const updated = await prisma.auctionListing.update({
-      where: { id: req.params.id },
-      data: { status }
-    });
+    const previousStatus = listing.status;
+    listing.status = status;
+    await listing.save();
 
-    // Notify seller
-    if (listing.seller) {
-      await prisma.notification.create({
-        data: {
-          userId: listing.seller.id,
-          type: 'SYSTEM',
-          title: `Auction Listing ${status}`,
-          message: `Your listing "${listing.title}" has been updated to ${status} by administration${reason ? `: ${reason}` : '.'}`
-        }
+    if (listing.sellerId) {
+      await Notification.create({
+        userId: listing.sellerId,
+        type: 'SYSTEM',
+        title: `Auction Listing ${status}`,
+        message: `Your listing "${listing.title}" has been updated to ${status} by administration${
+          reason ? `: ${reason}` : '.'
+        }`,
       });
     }
 
-    await prisma.auditLog.create({
-      data: {
-        actorId: req.user!.id,
-        action: 'MODERATE_LISTING',
-        targetType: 'AUCTION_LISTING',
-        targetId: listing.id,
-        payload: JSON.stringify({ previousStatus: listing.status, newStatus: status, reason })
-      }
+    await AuditLog.create({
+      actorId: new mongoose.Types.ObjectId(req.user!.id),
+      action: 'MODERATE_LISTING',
+      targetType: 'AUCTION_LISTING',
+      targetId: listing._id.toString(),
+      payload: { previousStatus, newStatus: status, reason },
     });
 
-    return res.json({ success: true, data: updated, message: `Listing updated to ${status}` });
+    return res.json({ success: true, data: listing.toJSON(), message: `Listing updated to ${status}` });
   } catch (error: any) {
     return res.status(400).json({ success: false, message: error.message });
   }
@@ -1033,25 +1077,28 @@ adminRouter.patch('/listings/:id/moderate', async (req: AuthRequest, res) => {
 adminRouter.delete('/listings/:id', async (req: AuthRequest, res) => {
   try {
     const listingId = req.params.id;
-    const listing = await prisma.auctionListing.findUnique({
-      where: { id: listingId }
-    });
+    const listing = await AuctionListing.findById(listingId);
 
     if (!listing) {
       return res.status(404).json({ success: false, message: 'Listing not found' });
     }
 
-    await prisma.savedListing.deleteMany({ where: { listingId } });
-    await prisma.auctionListing.delete({ where: { id: listingId } });
+    await Promise.all([
+      SavedListing.deleteMany({ listingId: listing._id }),
+      Bid.deleteMany({ listingId: listing._id }),
+      Question.deleteMany({ listingId: listing._id }),
+      AutoBidLimit.deleteMany({ listingId: listing._id }),
+      AuctionOutcome.deleteMany({ listingId: listing._id }),
+      HandoverRecord.deleteMany({ listingId: listing._id }),
+      AuctionListing.findByIdAndDelete(listing._id),
+    ]);
 
-    await prisma.auditLog.create({
-      data: {
-        actorId: req.user!.id,
-        action: 'DELETE_LISTING',
-        targetType: 'AUCTION_LISTING',
-        targetId: listingId,
-        payload: JSON.stringify({ title: listing.title })
-      }
+    await AuditLog.create({
+      actorId: new mongoose.Types.ObjectId(req.user!.id),
+      action: 'DELETE_LISTING',
+      targetType: 'AUCTION_LISTING',
+      targetId: listingId,
+      payload: { title: listing.title },
     });
 
     return res.json({ success: true, message: 'Listing deleted successfully' });
@@ -1069,54 +1116,77 @@ adminRouter.get('/auctions', async (req, res) => {
     const skip = (pageNum - 1) * take;
 
     const now = new Date();
-    const where: any = {};
+    const filter: any = {};
 
     if (status === 'LIVE') {
-      where.status = 'ACTIVE';
-      where.closingTime = { gt: now };
+      filter.status = 'ACTIVE';
+      filter.closingTime = { $gt: now };
     } else if (status === 'CLOSING_SOON') {
-      where.status = 'ACTIVE';
-      where.closingTime = { gt: now, lte: new Date(now.getTime() + 3 * 3600 * 1000) };
+      filter.status = 'ACTIVE';
+      filter.closingTime = { $gt: now, $lte: new Date(now.getTime() + 3 * 3600 * 1000) };
     } else if (status !== 'ALL') {
-      where.status = status;
+      filter.status = status;
     }
 
     if (search) {
-      where.OR = [
-        { title: { contains: search as string } },
-        { seller: { campusAlias: { contains: search as string } } }
-      ];
+      const reg = new RegExp((search as string).trim(), 'i');
+      filter.title = reg;
     }
 
     const [total, auctions] = await Promise.all([
-      prisma.auctionListing.count({ where }),
-      prisma.auctionListing.findMany({
-        where,
-        take,
-        skip,
-        orderBy: { closingTime: 'asc' },
-        include: {
-          seller: { select: { campusAlias: true, email: true } },
-          category: { select: { name: true } },
-          bids: {
-            orderBy: { acceptedAt: 'desc' },
-            take: 1,
-            include: { bidder: { select: { campusAlias: true } } }
-          },
-          _count: { select: { bids: true } }
-        }
-      })
+      AuctionListing.countDocuments(filter),
+      AuctionListing.find(filter)
+        .sort({ closingTime: 1 })
+        .skip(skip)
+        .limit(take)
+        .populate('seller', 'campusAlias email')
+        .populate('category', 'name')
+        .lean(),
     ]);
+
+    const listingIds = auctions.map((a: any) => a._id);
+    const [bidCounts, latestBids] = await Promise.all([
+      Bid.aggregate([
+        { $match: { listingId: { $in: listingIds } } },
+        { $group: { _id: '$listingId', count: { $sum: 1 } } },
+      ]),
+      Bid.find({ listingId: { $in: listingIds } })
+        .sort({ acceptedAt: -1 })
+        .populate('bidder', 'campusAlias')
+        .lean(),
+    ]);
+
+    const bidCountMap = new Map<string, number>();
+    bidCounts.forEach((c: any) => bidCountMap.set(c._id.toString(), c.count));
+
+    const latestBidMap = new Map<string, any>();
+    latestBids.forEach((b: any) => {
+      const lid = b.listingId.toString();
+      if (!latestBidMap.has(lid)) {
+        latestBidMap.set(lid, b);
+      }
+    });
+
+    const formatted = auctions.map((a: any) => {
+      const idStr = a._id.toString();
+      const topBid = latestBidMap.get(idStr);
+      return {
+        ...a,
+        id: idStr,
+        bids: topBid ? [{ ...topBid, id: topBid._id.toString() }] : [],
+        _count: { bids: bidCountMap.get(idStr) || 0 },
+      };
+    });
 
     return res.json({
       success: true,
-      data: auctions,
+      data: formatted,
       pagination: {
         page: pageNum,
         limit: take,
         total,
-        totalPages: Math.ceil(total / take)
-      }
+        totalPages: Math.ceil(total / take),
+      },
     });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
@@ -1126,19 +1196,22 @@ adminRouter.get('/auctions', async (req, res) => {
 // 4.6 Auction Events Timeline
 adminRouter.get('/auctions/:id/events', async (req, res) => {
   try {
+    const listingObjectId = new mongoose.Types.ObjectId(req.params.id);
     const [events, bids] = await Promise.all([
-      prisma.auctionEvent.findMany({
-        where: { listingId: req.params.id },
-        orderBy: { createdAt: 'desc' }
-      }),
-      prisma.bid.findMany({
-        where: { listingId: req.params.id },
-        orderBy: { acceptedAt: 'desc' },
-        include: { bidder: { select: { campusAlias: true, studentId: true } } }
-      })
+      AuctionEvent.find({ listingId: listingObjectId }).sort({ createdAt: -1 }).lean(),
+      Bid.find({ listingId: listingObjectId })
+        .sort({ acceptedAt: -1 })
+        .populate('bidder', 'campusAlias studentId')
+        .lean(),
     ]);
 
-    return res.json({ success: true, data: { events, bids } });
+    return res.json({
+      success: true,
+      data: {
+        events: events.map((e: any) => ({ ...e, id: e._id.toString() })),
+        bids: bids.map((b: any) => ({ ...b, id: b._id.toString() })),
+      },
+    });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -1155,42 +1228,34 @@ adminRouter.get('/bids', async (req, res) => {
     const take = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 20));
     const skip = (pageNum - 1) * take;
 
-    const where: any = {};
-    if (listingId) where.listingId = listingId as string;
-    if (bidderId) where.bidderId = bidderId as string;
-
-    if (search) {
-      const q = (search as string).trim();
-      where.OR = [
-        { bidder: { campusAlias: { contains: q } } },
-        { bidder: { studentId: { contains: q } } },
-        { listing: { title: { contains: q } } }
-      ];
+    const filter: any = {};
+    if (listingId && mongoose.Types.ObjectId.isValid(listingId as string)) {
+      filter.listingId = new mongoose.Types.ObjectId(listingId as string);
+    }
+    if (bidderId && mongoose.Types.ObjectId.isValid(bidderId as string)) {
+      filter.bidderId = new mongoose.Types.ObjectId(bidderId as string);
     }
 
     const [total, bids] = await Promise.all([
-      prisma.bid.count({ where }),
-      prisma.bid.findMany({
-        where,
-        take,
-        skip,
-        orderBy: { acceptedAt: 'desc' },
-        include: {
-          bidder: { select: { id: true, fullName: true, campusAlias: true, studentId: true, email: true } },
-          listing: { select: { id: true, title: true, status: true, currentLeadingBidInCents: true } }
-        }
-      })
+      Bid.countDocuments(filter),
+      Bid.find(filter)
+        .sort({ acceptedAt: -1 })
+        .skip(skip)
+        .limit(take)
+        .populate('bidder', 'id fullName campusAlias studentId email')
+        .populate('listing', 'id title status currentLeadingBidInCents')
+        .lean(),
     ]);
 
     return res.json({
       success: true,
-      data: bids,
+      data: bids.map((b: any) => ({ ...b, id: b._id.toString() })),
       pagination: {
         page: pageNum,
         limit: take,
         total,
-        totalPages: Math.ceil(total / take)
-      }
+        totalPages: Math.ceil(total / take),
+      },
     });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
@@ -1203,17 +1268,21 @@ adminRouter.get('/bids', async (req, res) => {
 
 adminRouter.get('/categories', async (req, res) => {
   try {
-    const categories = await prisma.category.findMany({
-      orderBy: { name: 'asc' },
-      include: {
-        _count: {
-          select: {
-            listings: true
-          }
-        }
-      }
-    });
-    return res.json({ success: true, data: categories });
+    const categories = await Category.find().sort({ name: 1 }).lean();
+
+    const counts = await AuctionListing.aggregate([
+      { $group: { _id: '$categoryId', count: { $sum: 1 } } },
+    ]);
+    const countMap = new Map<string, number>();
+    counts.forEach((c: any) => countMap.set(c._id.toString(), c.count));
+
+    const formatted = categories.map((cat: any) => ({
+      ...cat,
+      id: cat._id.toString(),
+      _count: { listings: countMap.get(cat._id.toString()) || 0 },
+    }));
+
+    return res.json({ success: true, data: formatted });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -1226,33 +1295,30 @@ adminRouter.post('/categories', async (req: AuthRequest, res) => {
       return res.status(400).json({ success: false, message: 'Name and slug are required' });
     }
 
-    const existing = await prisma.category.findFirst({
-      where: { OR: [{ name }, { slug }] }
+    const existing = await Category.findOne({
+      $or: [{ name: name.trim() }, { slug: slug.trim().toLowerCase() }],
     });
     if (existing) {
       return res.status(400).json({ success: false, message: 'Category name or slug already exists' });
     }
 
-    const category = await prisma.category.create({
-      data: {
-        name: name.trim(),
-        slug: slug.trim().toLowerCase(),
-        description: description?.trim() || null,
-        icon: icon || 'Tag'
-      }
+    const category = await Category.create({
+      name: name.trim(),
+      slug: slug.trim().toLowerCase(),
+      description: description?.trim() || null,
+      icon: icon || 'Tag',
+      isActive: true,
     });
 
-    await prisma.auditLog.create({
-      data: {
-        actorId: req.user!.id,
-        action: 'CREATE_CATEGORY',
-        targetType: 'CATEGORY',
-        targetId: category.id,
-        payload: JSON.stringify(category)
-      }
+    await AuditLog.create({
+      actorId: new mongoose.Types.ObjectId(req.user!.id),
+      action: 'CREATE_CATEGORY',
+      targetType: 'CATEGORY',
+      targetId: category._id.toString(),
+      payload: category.toJSON(),
     });
 
-    return res.status(201).json({ success: true, data: category });
+    return res.status(201).json({ success: true, data: category.toJSON() });
   } catch (error: any) {
     return res.status(400).json({ success: false, message: error.message });
   }
@@ -1261,27 +1327,30 @@ adminRouter.post('/categories', async (req: AuthRequest, res) => {
 adminRouter.patch('/categories/:id', async (req: AuthRequest, res) => {
   try {
     const { name, slug, description, icon } = req.body;
-    const category = await prisma.category.update({
-      where: { id: req.params.id },
-      data: {
+    const category = await Category.findByIdAndUpdate(
+      req.params.id,
+      {
         name: name?.trim(),
         slug: slug?.trim().toLowerCase(),
         description: description?.trim(),
-        icon
-      }
+        icon,
+      },
+      { new: true }
+    );
+
+    if (!category) {
+      return res.status(404).json({ success: false, message: 'Category not found' });
+    }
+
+    await AuditLog.create({
+      actorId: new mongoose.Types.ObjectId(req.user!.id),
+      action: 'UPDATE_CATEGORY',
+      targetType: 'CATEGORY',
+      targetId: category._id.toString(),
+      payload: { name, slug },
     });
 
-    await prisma.auditLog.create({
-      data: {
-        actorId: req.user!.id,
-        action: 'UPDATE_CATEGORY',
-        targetType: 'CATEGORY',
-        targetId: category.id,
-        payload: JSON.stringify({ name, slug })
-      }
-    });
-
-    return res.json({ success: true, data: category });
+    return res.json({ success: true, data: category.toJSON() });
   } catch (error: any) {
     return res.status(400).json({ success: false, message: error.message });
   }
@@ -1289,32 +1358,27 @@ adminRouter.patch('/categories/:id', async (req: AuthRequest, res) => {
 
 adminRouter.delete('/categories/:id', async (req: AuthRequest, res) => {
   try {
-    const category = await prisma.category.findUnique({
-      where: { id: req.params.id },
-      include: { _count: { select: { listings: true } } }
-    });
-
+    const category = await Category.findById(req.params.id);
     if (!category) {
       return res.status(404).json({ success: false, message: 'Category not found' });
     }
 
-    if (category._count.listings > 0) {
+    const attachedCount = await AuctionListing.countDocuments({ categoryId: category._id });
+    if (attachedCount > 0) {
       return res.status(400).json({
         success: false,
-        message: `Cannot delete category "${category.name}" because ${category._count.listings} listing(s) are currently attached to it.`
+        message: `Cannot delete category "${category.name}" because ${attachedCount} listing(s) are currently attached to it.`,
       });
     }
 
-    await prisma.category.delete({ where: { id: req.params.id } });
+    await Category.findByIdAndDelete(category._id);
 
-    await prisma.auditLog.create({
-      data: {
-        actorId: req.user!.id,
-        action: 'DELETE_CATEGORY',
-        targetType: 'CATEGORY',
-        targetId: category.id,
-        payload: JSON.stringify({ name: category.name })
-      }
+    await AuditLog.create({
+      actorId: new mongoose.Types.ObjectId(req.user!.id),
+      action: 'DELETE_CATEGORY',
+      targetType: 'CATEGORY',
+      targetId: category._id.toString(),
+      payload: { name: category.name },
     });
 
     return res.json({ success: true, message: `Category "${category.name}" deleted successfully` });
@@ -1334,44 +1398,36 @@ adminRouter.get('/disputes', async (req, res) => {
     const take = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 15));
     const skip = (pageNum - 1) * take;
 
-    const where: any = {};
-    if (status !== 'ALL') where.status = status;
-    if (priority !== 'ALL') where.priority = priority;
+    const filter: any = {};
+    if (status !== 'ALL') filter.status = status;
+    if (priority !== 'ALL') filter.priority = priority;
     if (search) {
-      const q = (search as string).trim();
-      where.OR = [
-        { description: { contains: q } },
-        { category: { contains: q } },
-        { reporter: { campusAlias: { contains: q } } },
-        { reportedUser: { campusAlias: { contains: q } } }
-      ];
+      const reg = new RegExp((search as string).trim(), 'i');
+      filter.$or = [{ description: reg }, { category: reg }];
     }
 
     const [total, disputes] = await Promise.all([
-      prisma.dispute.count({ where }),
-      prisma.dispute.findMany({
-        where,
-        take,
-        skip,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          reporter: { select: { id: true, fullName: true, campusAlias: true, email: true, studentId: true } },
-          reportedUser: { select: { id: true, fullName: true, campusAlias: true, email: true, studentId: true } },
-          listing: { select: { id: true, title: true, status: true, currentLeadingBidInCents: true } },
-          assignedAdmin: { select: { id: true, campusAlias: true } }
-        }
-      })
+      Dispute.countDocuments(filter),
+      Dispute.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(take)
+        .populate('reporter', 'id fullName campusAlias email studentId')
+        .populate('reportedUser', 'id fullName campusAlias email studentId')
+        .populate('listing', 'id title status currentLeadingBidInCents')
+        .populate('assignedAdmin', 'id campusAlias')
+        .lean(),
     ]);
 
     return res.json({
       success: true,
-      data: disputes,
+      data: disputes.map((d: any) => ({ ...d, id: d._id.toString() })),
       pagination: {
         page: pageNum,
         limit: take,
         total,
-        totalPages: Math.ceil(total / take)
-      }
+        totalPages: Math.ceil(total / take),
+      },
     });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
@@ -1380,26 +1436,21 @@ adminRouter.get('/disputes', async (req, res) => {
 
 adminRouter.get('/disputes/:id', async (req, res) => {
   try {
-    const dispute = await prisma.dispute.findUnique({
-      where: { id: req.params.id },
-      include: {
-        reporter: { select: { id: true, fullName: true, campusAlias: true, email: true, studentId: true } },
-        reportedUser: { select: { id: true, fullName: true, campusAlias: true, email: true, studentId: true } },
-        listing: {
-          include: {
-            images: { take: 1 },
-            seller: { select: { campusAlias: true } }
-          }
-        },
-        assignedAdmin: { select: { id: true, campusAlias: true } }
-      }
-    });
+    const dispute = await Dispute.findById(req.params.id)
+      .populate('reporter', 'id fullName campusAlias email studentId')
+      .populate('reportedUser', 'id fullName campusAlias email studentId')
+      .populate({
+        path: 'listing',
+        populate: { path: 'seller', select: 'campusAlias' },
+      })
+      .populate('assignedAdmin', 'id campusAlias')
+      .lean();
 
     if (!dispute) {
       return res.status(404).json({ success: false, message: 'Dispute not found' });
     }
 
-    return res.json({ success: true, data: dispute });
+    return res.json({ success: true, data: { ...dispute, id: dispute._id.toString() } });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -1409,49 +1460,44 @@ adminRouter.patch('/disputes/:id', async (req: AuthRequest, res) => {
   try {
     const { status, priority, assignedAdminId, internalNotes, resolutionReason } = req.body;
 
-    const existing = await prisma.dispute.findUnique({ where: { id: req.params.id } });
+    const existing = await Dispute.findById(req.params.id);
     if (!existing) {
       return res.status(404).json({ success: false, message: 'Dispute not found' });
     }
 
-    const updateData: any = {};
-    if (status !== undefined) updateData.status = status;
-    if (priority !== undefined) updateData.priority = priority;
-    if (assignedAdminId !== undefined) updateData.assignedAdminId = assignedAdminId;
-    if (internalNotes !== undefined) updateData.internalNotes = internalNotes;
-    if (resolutionReason !== undefined) updateData.resolutionReason = resolutionReason;
+    if (status !== undefined) existing.status = status;
+    if (priority !== undefined) existing.priority = priority;
+    if (assignedAdminId !== undefined) {
+      existing.assignedAdminId = assignedAdminId ? new mongoose.Types.ObjectId(assignedAdminId) : undefined;
+    }
+    if (internalNotes !== undefined) existing.internalNotes = internalNotes;
+    if (resolutionReason !== undefined) existing.resolutionReason = resolutionReason;
     if (status === 'RESOLVED' || status === 'REJECTED') {
-      updateData.resolvedAt = new Date();
+      existing.resolvedAt = new Date();
     }
 
-    const updated = await prisma.dispute.update({
-      where: { id: req.params.id },
-      data: updateData
-    });
+    await existing.save();
 
-    // Notify reporter if resolved or status updated
     if (status && status !== existing.status) {
-      await prisma.notification.create({
-        data: {
-          userId: existing.reporterId,
-          type: 'SYSTEM',
-          title: `Dispute Report ${status}`,
-          message: `Your dispute report (ID: ${existing.id.substring(0, 8)}) is now marked as ${status}.${resolutionReason ? ` Resolution notes: ${resolutionReason}` : ''}`
-        }
+      await Notification.create({
+        userId: existing.reporterId,
+        type: 'SYSTEM',
+        title: `Dispute Report ${status}`,
+        message: `Your dispute report is now marked as ${status}.${
+          resolutionReason ? ` Resolution notes: ${resolutionReason}` : ''
+        }`,
       });
     }
 
-    await prisma.auditLog.create({
-      data: {
-        actorId: req.user!.id,
-        action: 'UPDATE_DISPUTE',
-        targetType: 'DISPUTE',
-        targetId: updated.id,
-        payload: JSON.stringify({ previousStatus: existing.status, newStatus: status, resolutionReason })
-      }
+    await AuditLog.create({
+      actorId: new mongoose.Types.ObjectId(req.user!.id),
+      action: 'UPDATE_DISPUTE',
+      targetType: 'DISPUTE',
+      targetId: existing._id.toString(),
+      payload: { previousStatus: existing.status, newStatus: status, resolutionReason },
     });
 
-    return res.json({ success: true, data: updated, message: 'Dispute updated successfully' });
+    return res.json({ success: true, data: existing.toJSON(), message: 'Dispute updated successfully' });
   } catch (error: any) {
     return res.status(400).json({ success: false, message: error.message });
   }
@@ -1463,24 +1509,29 @@ adminRouter.patch('/disputes/:id', async (req: AuthRequest, res) => {
 
 adminRouter.get('/notifications', async (req, res) => {
   try {
-    const notifications = await prisma.notification.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-      include: {
-        user: { select: { fullName: true, campusAlias: true, email: true } }
-      }
-    });
+    const [notifications, totalCount, unreadCount] = await Promise.all([
+      Notification.find()
+        .sort({ createdAt: -1 })
+        .limit(50)
+        .populate('userId', 'fullName campusAlias email')
+        .lean(),
+      Notification.countDocuments(),
+      Notification.countDocuments({ isRead: false }),
+    ]);
 
-    const totalCount = await prisma.notification.count();
-    const unreadCount = await prisma.notification.count({ where: { isRead: false } });
+    const formatted = notifications.map((n: any) => ({
+      ...n,
+      id: n._id.toString(),
+      user: n.userId,
+    }));
 
     return res.json({
       success: true,
       data: {
-        notifications,
+        notifications: formatted,
         totalCount,
-        unreadCount
-      }
+        unreadCount,
+      },
     });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
@@ -1494,54 +1545,42 @@ adminRouter.post('/notifications', async (req: AuthRequest, res) => {
       return res.status(400).json({ success: false, message: 'Title and message are required' });
     }
 
-    let targetUsers: { id: string }[] = [];
+    let targetUsers: any[] = [];
 
     if (target === 'INDIVIDUAL' && targetUserId) {
-      targetUsers = [{ id: targetUserId }];
+      targetUsers = [{ _id: new mongoose.Types.ObjectId(targetUserId) }];
     } else if (target === 'VERIFIED_STUDENTS') {
-      targetUsers = await prisma.user.findMany({
-        where: { role: 'STUDENT', isEmailVerified: true, isSuspended: false },
-        select: { id: true }
-      });
+      targetUsers = await User.find({ role: 'STUDENT', isEmailVerified: true, isSuspended: false }).select('_id');
     } else if (target === 'SUSPENDED_STUDENTS') {
-      targetUsers = await prisma.user.findMany({
-        where: { role: 'STUDENT', isSuspended: true },
-        select: { id: true }
-      });
+      targetUsers = await User.find({ role: 'STUDENT', isSuspended: true }).select('_id');
     } else {
-      // ALL_STUDENTS
-      targetUsers = await prisma.user.findMany({
-        where: { role: 'STUDENT' },
-        select: { id: true }
-      });
+      targetUsers = await User.find({ role: 'STUDENT' }).select('_id');
     }
 
     if (targetUsers.length === 0) {
       return res.status(400).json({ success: false, message: 'No target students matched this criteria' });
     }
 
-    await prisma.notification.createMany({
-      data: targetUsers.map(u => ({
-        userId: u.id,
-        type,
-        title: title.trim(),
-        message: message.trim(),
-        metadata: JSON.stringify({ senderAdmin: req.user!.campusAlias, sentAt: new Date() })
-      }))
-    });
+    const docs = targetUsers.map((u: any) => ({
+      userId: u._id,
+      type,
+      title: title.trim(),
+      message: message.trim(),
+      metadata: { senderAdmin: req.user!.campusAlias, sentAt: new Date() },
+    }));
 
-    await prisma.auditLog.create({
-      data: {
-        actorId: req.user!.id,
-        action: 'BROADCAST_NOTIFICATION',
-        targetType: 'NOTIFICATION',
-        payload: JSON.stringify({ title, target, recipientCount: targetUsers.length })
-      }
+    await Notification.insertMany(docs);
+
+    await AuditLog.create({
+      actorId: new mongoose.Types.ObjectId(req.user!.id),
+      action: 'BROADCAST_NOTIFICATION',
+      targetType: 'NOTIFICATION',
+      payload: { title, target, recipientCount: targetUsers.length },
     });
 
     return res.status(201).json({
       success: true,
-      message: `Notification successfully sent to ${targetUsers.length} student(s)`
+      message: `Notification successfully sent to ${targetUsers.length} student(s)`,
     });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
@@ -1570,46 +1609,70 @@ adminRouter.get('/reports/overview', async (req, res) => {
       unsoldCount,
       bidsCount,
       disputesCount,
-      topSellers,
-      topBidders
+      topSellersAgg,
+      topBiddersAgg,
+      completedListings,
     ] = await Promise.all([
-      prisma.user.count({ where: { role: 'STUDENT', createdAt: { gte: startDate } } }),
-      prisma.user.count({ where: { role: 'STUDENT', isEmailVerified: true, createdAt: { gte: startDate } } }),
-      prisma.auctionListing.count({ where: { createdAt: { gte: startDate } } }),
-      prisma.auctionListing.count({ where: { status: 'COMPLETED', createdAt: { gte: startDate } } }),
-      prisma.auctionListing.count({ where: { status: 'UNSOLD', createdAt: { gte: startDate } } }),
-      prisma.bid.count({ where: { acceptedAt: { gte: startDate } } }),
-      prisma.dispute.count({ where: { createdAt: { gte: startDate } } }),
-      prisma.user.findMany({
-        where: { role: 'STUDENT' },
-        take: 5,
-        orderBy: { listings: { _count: 'desc' } },
-        select: {
-          id: true,
-          fullName: true,
-          campusAlias: true,
-          studentId: true,
-          _count: { select: { listings: true } }
-        }
-      }),
-      prisma.user.findMany({
-        where: { role: 'STUDENT' },
-        take: 5,
-        orderBy: { bids: { _count: 'desc' } },
-        select: {
-          id: true,
-          fullName: true,
-          campusAlias: true,
-          studentId: true,
-          _count: { select: { bids: true } }
-        }
-      })
+      User.countDocuments({ role: 'STUDENT', createdAt: { $gte: startDate } }),
+      User.countDocuments({ role: 'STUDENT', isEmailVerified: true, createdAt: { $gte: startDate } }),
+      AuctionListing.countDocuments({ createdAt: { $gte: startDate } }),
+      AuctionListing.countDocuments({ status: 'COMPLETED', createdAt: { $gte: startDate } }),
+      AuctionListing.countDocuments({ status: 'UNSOLD', createdAt: { $gte: startDate } }),
+      Bid.countDocuments({ acceptedAt: { $gte: startDate } }),
+      Dispute.countDocuments({ createdAt: { $gte: startDate } }),
+      AuctionListing.aggregate([
+        { $match: { createdAt: { $gte: startDate } } },
+        { $group: { _id: '$sellerId', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 5 },
+      ]),
+      Bid.aggregate([
+        { $match: { acceptedAt: { $gte: startDate } } },
+        { $group: { _id: '$bidderId', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 5 },
+      ]),
+      AuctionListing.find({ status: 'COMPLETED', createdAt: { $gte: startDate } }).select(
+        'currentLeadingBidInCents'
+      ),
     ]);
 
-    const completedListings = await prisma.auctionListing.findMany({
-      where: { status: 'COMPLETED', createdAt: { gte: startDate } },
-      select: { currentLeadingBidInCents: true }
+    const sellerUserIds = topSellersAgg.map((s: any) => s._id);
+    const bidderUserIds = topBiddersAgg.map((b: any) => b._id);
+
+    const [sellerUsers, bidderUsers] = await Promise.all([
+      User.find({ _id: { $in: sellerUserIds } }).select('fullName campusAlias studentId').lean(),
+      User.find({ _id: { $in: bidderUserIds } }).select('fullName campusAlias studentId').lean(),
+    ]);
+
+    const sMap = new Map<string, any>();
+    sellerUsers.forEach((u: any) => sMap.set(u._id.toString(), u));
+
+    const bMap = new Map<string, any>();
+    bidderUsers.forEach((u: any) => bMap.set(u._id.toString(), u));
+
+    const topSellers = topSellersAgg.map((s: any) => {
+      const u = sMap.get(s._id.toString()) || {};
+      return {
+        id: s._id.toString(),
+        fullName: u.fullName || 'Student',
+        campusAlias: u.campusAlias || 'Student',
+        studentId: u.studentId,
+        _count: { listings: s.count },
+      };
     });
+
+    const topBidders = topBiddersAgg.map((b: any) => {
+      const u = bMap.get(b._id.toString()) || {};
+      return {
+        id: b._id.toString(),
+        fullName: u.fullName || 'Student',
+        campusAlias: u.campusAlias || 'Student',
+        studentId: u.studentId,
+        _count: { bids: b.count },
+      };
+    });
+
     const totalVolumeInCents = completedListings.reduce((acc, curr) => acc + curr.currentLeadingBidInCents, 0);
 
     return res.json({
@@ -1625,8 +1688,8 @@ adminRouter.get('/reports/overview', async (req, res) => {
         disputesCount,
         totalVolumeInCents,
         topSellers,
-        topBidders
-      }
+        topBidders,
+      },
     });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
@@ -1638,61 +1701,74 @@ adminRouter.get('/reports/export', async (req, res) => {
     const { type = 'auctions' } = req.query;
 
     if (type === 'auctions') {
-      const items = await prisma.auctionListing.findMany({
-        orderBy: { createdAt: 'desc' },
-        include: {
-          category: { select: { name: true } },
-          seller: { select: { campusAlias: true, studentId: true } },
-          _count: { select: { bids: true } }
-        }
-      });
+      const items = await AuctionListing.find()
+        .sort({ createdAt: -1 })
+        .populate('category', 'name')
+        .populate('seller', 'campusAlias studentId')
+        .lean();
+
+      const listingIds = items.map((i: any) => i._id);
+      const bidCounts = await Bid.aggregate([
+        { $match: { listingId: { $in: listingIds } } },
+        { $group: { _id: '$listingId', count: { $sum: 1 } } },
+      ]);
+      const bMap = new Map<string, number>();
+      bidCounts.forEach((c: any) => bMap.set(c._id.toString(), c.count));
 
       const csvRows = [
-        ['ID', 'Title', 'Category', 'Seller Alias', 'Starting Price (INR)', 'Final/Leading Bid (INR)', 'Bids Count', 'Status', 'Closing Time', 'Created At']
+        [
+          'ID',
+          'Title',
+          'Category',
+          'Seller Alias',
+          'Starting Price (INR)',
+          'Final/Leading Bid (INR)',
+          'Bids Count',
+          'Status',
+          'Closing Time',
+          'Created At',
+        ],
       ];
-      for (const item of items) {
+      for (const item of items as any) {
         csvRows.push([
-          item.id,
-          `"${item.title.replace(/"/g, '""')}"`,
-          `"${item.category.name}"`,
-          item.seller.campusAlias,
+          item._id.toString(),
+          `"${(item.title || '').replace(/"/g, '""')}"`,
+          `"${item.category?.name || 'General'}"`,
+          item.seller?.campusAlias || 'Seller',
           (item.startingPriceInCents / 100).toFixed(2),
           (item.currentLeadingBidInCents / 100).toFixed(2),
-          item._count.bids.toString(),
+          (bMap.get(item._id.toString()) || 0).toString(),
           item.status,
-          item.closingTime.toISOString(),
-          item.createdAt.toISOString()
+          item.closingTime ? new Date(item.closingTime).toISOString() : '',
+          item.createdAt ? new Date(item.createdAt).toISOString() : '',
         ]);
       }
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', 'attachment; filename="auctions_report.csv"');
-      return res.send(csvRows.map(r => r.join(',')).join('\n'));
+      return res.send(csvRows.map((r) => r.join(',')).join('\n'));
     }
 
     if (type === 'bids') {
-      const items = await prisma.bid.findMany({
-        orderBy: { acceptedAt: 'desc' },
-        include: {
-          bidder: { select: { campusAlias: true, studentId: true } },
-          listing: { select: { title: true } }
-        }
-      });
-      const csvRows = [
-        ['Bid ID', 'Auction Title', 'Bidder Alias', 'Student ID', 'Amount (INR)', 'Accepted At']
-      ];
-      for (const b of items) {
+      const items = await Bid.find()
+        .sort({ acceptedAt: -1 })
+        .populate('bidder', 'campusAlias studentId')
+        .populate('listing', 'title')
+        .lean();
+
+      const csvRows = [['Bid ID', 'Auction Title', 'Bidder Alias', 'Student ID', 'Amount (INR)', 'Accepted At']];
+      for (const b of items as any) {
         csvRows.push([
-          b.id,
-          `"${b.listing.title.replace(/"/g, '""')}"`,
-          b.bidder.campusAlias,
-          b.bidder.studentId,
+          b._id.toString(),
+          `"${(b.listing?.title || '').replace(/"/g, '""')}"`,
+          b.bidder?.campusAlias || 'Student',
+          b.bidder?.studentId || '',
           (b.amountInCents / 100).toFixed(2),
-          b.acceptedAt.toISOString()
+          b.acceptedAt ? new Date(b.acceptedAt).toISOString() : '',
         ]);
       }
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', 'attachment; filename="bids_report.csv"');
-      return res.send(csvRows.map(r => r.join(',')).join('\n'));
+      return res.send(csvRows.map((r) => r.join(',')).join('\n'));
     }
 
     return res.status(400).json({ success: false, message: 'Invalid export type' });
@@ -1712,40 +1788,33 @@ adminRouter.get('/audit-logs', async (req, res) => {
     const take = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 25));
     const skip = (pageNum - 1) * take;
 
-    const where: any = {};
-    if (action) where.action = action as string;
-    if (targetType) where.targetType = targetType as string;
+    const filter: any = {};
+    if (action) filter.action = action as string;
+    if (targetType) filter.targetType = targetType as string;
     if (search) {
-      where.OR = [
-        { action: { contains: search as string } },
-        { targetType: { contains: search as string } },
-        { payload: { contains: search as string } },
-        { actor: { campusAlias: { contains: search as string } } }
-      ];
+      const reg = new RegExp((search as string).trim(), 'i');
+      filter.$or = [{ action: reg }, { targetType: reg }];
     }
 
     const [total, logs] = await Promise.all([
-      prisma.auditLog.count({ where }),
-      prisma.auditLog.findMany({
-        where,
-        take,
-        skip,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          actor: { select: { id: true, campusAlias: true, email: true } }
-        }
-      })
+      AuditLog.countDocuments(filter),
+      AuditLog.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(take)
+        .populate('actor', 'id campusAlias email')
+        .lean(),
     ]);
 
     return res.json({
       success: true,
-      data: logs,
+      data: logs.map((l: any) => ({ ...l, id: l._id.toString() })),
       pagination: {
         page: pageNum,
         limit: take,
         total,
-        totalPages: Math.ceil(total / take)
-      }
+        totalPages: Math.ceil(total / take),
+      },
     });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
@@ -1754,30 +1823,24 @@ adminRouter.get('/audit-logs', async (req, res) => {
 
 adminRouter.get('/audit-logs/export', async (req, res) => {
   try {
-    const logs = await prisma.auditLog.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 500,
-      include: { actor: { select: { campusAlias: true } } }
-    });
+    const logs = await AuditLog.find().sort({ createdAt: -1 }).limit(500).populate('actor', 'campusAlias').lean();
 
-    const csvRows = [
-      ['ID', 'Timestamp', 'Actor', 'Action', 'Target Type', 'Target ID', 'Details']
-    ];
-    for (const log of logs) {
+    const csvRows = [['ID', 'Timestamp', 'Actor', 'Action', 'Target Type', 'Target ID', 'Details']];
+    for (const log of logs as any) {
       csvRows.push([
-        log.id,
-        log.createdAt.toISOString(),
+        log._id.toString(),
+        log.createdAt ? new Date(log.createdAt).toISOString() : '',
         log.actor?.campusAlias || 'System',
         log.action,
-        log.targetType,
+        log.targetType || '',
         log.targetId || '',
-        `"${(log.payload || '').replace(/"/g, '""')}"`
+        `"${JSON.stringify(log.payload || '').replace(/"/g, '""')}"`,
       ]);
     }
 
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="campus_audit_logs.csv"');
-    return res.send(csvRows.map(r => r.join(',')).join('\n'));
+    return res.send(csvRows.map((r) => r.join(',')).join('\n'));
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -1789,7 +1852,7 @@ adminRouter.get('/audit-logs/export', async (req, res) => {
 
 adminRouter.get('/settings', async (req, res) => {
   try {
-    const settingsList = await prisma.adminSetting.findMany();
+    const settingsList = await AdminSetting.find().lean();
     const settingsMap: { [key: string]: any } = {};
     for (const s of settingsList) {
       try {
@@ -1813,28 +1876,23 @@ adminRouter.patch('/settings', async (req: AuthRequest, res) => {
 
     const updatedKeys: string[] = [];
     for (const [key, value] of Object.entries(settings)) {
-      await prisma.adminSetting.upsert({
-        where: { key },
-        update: {
-          value: JSON.stringify(value),
-          updatedBy: req.user!.id
-        },
-        create: {
+      await AdminSetting.findOneAndUpdate(
+        { key },
+        {
           key,
           value: JSON.stringify(value),
-          updatedBy: req.user!.id
-        }
-      });
+          updatedBy: req.user!.id,
+        },
+        { upsert: true, new: true }
+      );
       updatedKeys.push(key);
     }
 
-    await prisma.auditLog.create({
-      data: {
-        actorId: req.user!.id,
-        action: 'UPDATE_SYSTEM_SETTINGS',
-        targetType: 'SYSTEM_SETTINGS',
-        payload: JSON.stringify({ updatedKeys })
-      }
+    await AuditLog.create({
+      actorId: new mongoose.Types.ObjectId(req.user!.id),
+      action: 'UPDATE_SYSTEM_SETTINGS',
+      targetType: 'SYSTEM_SETTINGS',
+      payload: { updatedKeys },
     });
 
     return res.json({ success: true, message: 'Settings saved successfully', updatedKeys });

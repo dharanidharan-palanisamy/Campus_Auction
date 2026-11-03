@@ -56,6 +56,14 @@ function StudentsManagementContent() {
   const [department, setDepartment] = useState('');
   const [sort, setSort] = useState('newest');
 
+  useEffect(() => {
+    const s = searchParams.get('status');
+    if (s && ['ALL', 'VERIFIED', 'PENDING', 'SUSPENDED'].includes(s)) {
+      setStatusTab(s as any);
+      setPage(1);
+    }
+  }, [searchParams]);
+
   // Modals state
   const [selectedForVerify, setSelectedForVerify] = useState<any | null>(null);
   const [verifyNotes, setVerifyNotes] = useState('');
