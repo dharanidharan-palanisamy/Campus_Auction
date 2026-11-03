@@ -36,6 +36,8 @@ export interface IUser extends Document {
   role: 'STUDENT' | 'ADMIN';
   department?: string;
   college?: string;
+  phone?: string;
+  bio?: string;
   avatarUrl?: string;
   profileImage?: string;
   isEmailVerified: boolean;
@@ -47,6 +49,12 @@ export interface IUser extends Document {
   suspendedUntil?: Date;
   lastLogin?: Date;
   lastLoginAt?: Date;
+  trustScore: number;
+  trustTier: 'NEWBIE' | 'RISING' | 'TRUSTED' | 'ELITE';
+  ratingCount: number;
+  averageRating: number;
+  successfulHandoversCount: number;
+  responseRatePercent: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -61,6 +69,8 @@ const UserSchema = new Schema<IUser>(
     role: { type: String, enum: ['STUDENT', 'ADMIN'], default: 'STUDENT', index: true },
     department: { type: String, trim: true },
     college: { type: String, trim: true },
+    phone: { type: String, trim: true },
+    bio: { type: String, trim: true },
     avatarUrl: { type: String },
     isEmailVerified: { type: Boolean, default: true },
     verificationStatus: { type: String, enum: ['VERIFIED', 'PENDING', 'REJECTED'], default: 'VERIFIED' },
@@ -70,6 +80,12 @@ const UserSchema = new Schema<IUser>(
     suspensionReason: { type: String },
     suspendedUntil: { type: Date },
     lastLogin: { type: Date },
+    trustScore: { type: Number, default: 80, min: 0, max: 100 },
+    trustTier: { type: String, enum: ['NEWBIE', 'RISING', 'TRUSTED', 'ELITE'], default: 'TRUSTED' },
+    ratingCount: { type: Number, default: 0 },
+    averageRating: { type: Number, default: 5.0 },
+    successfulHandoversCount: { type: Number, default: 0 },
+    responseRatePercent: { type: Number, default: 95 },
   },
   defaultSchemaOptions
 );
@@ -386,6 +402,13 @@ export interface IHandoverRecord extends Document {
   buyerId?: mongoose.Types.ObjectId;
   handoverStatus: 'PENDING' | 'COMPLETED' | 'DISPUTED' | 'FAILED';
   pickupNotes?: string;
+  qrCodeToken?: string;
+  handoverCode?: string;
+  qrExpiresAt?: Date;
+  scannedAt?: Date;
+  scannedBy?: mongoose.Types.ObjectId;
+  verificationMethod?: 'QR_SCAN' | 'MANUAL_CODE' | 'LEGACY';
+  location?: string;
   completedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -396,8 +419,15 @@ const HandoverRecordSchema = new Schema<IHandoverRecord>(
     listingId: { type: Schema.Types.ObjectId, ref: 'AuctionListing', required: true, unique: true, index: true },
     sellerId: { type: Schema.Types.ObjectId, ref: 'User' },
     buyerId: { type: Schema.Types.ObjectId, ref: 'User' },
-    handoverStatus: { type: String, enum: ['PENDING', 'COMPLETED', 'DISPUTED', 'FAILED'], default: 'PENDING' },
+    handoverStatus: { type: String, enum: ['PENDING', 'COMPLETED', 'DISPUTED', 'FAILED'], default: 'PENDING', index: true },
     pickupNotes: { type: String },
+    qrCodeToken: { type: String, index: true },
+    handoverCode: { type: String, index: true },
+    qrExpiresAt: { type: Date },
+    scannedAt: { type: Date },
+    scannedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    verificationMethod: { type: String, enum: ['QR_SCAN', 'MANUAL_CODE', 'LEGACY'], default: 'QR_SCAN' },
+    location: { type: String },
     completedAt: { type: Date },
   },
   defaultSchemaOptions
@@ -412,6 +442,100 @@ HandoverRecordSchema.virtual('pickupDetails').get(function () {
 
 export const HandoverRecord: Model<IHandoverRecord> =
   mongoose.models.HandoverRecord || mongoose.model<IHandoverRecord>('HandoverRecord', HandoverRecordSchema);
+
+// ==========================================
+// 7B. SELLER REVIEW & REPUTATION (TRUST SCORE)
+// ==========================================
+export interface ISellerReview extends Document {
+  listingId: mongoose.Types.ObjectId;
+  sellerId: mongoose.Types.ObjectId;
+  buyerId: mongoose.Types.ObjectId;
+  overallRating: number; // 1 to 5
+  itemAccuracyRating: number; // 1 to 5
+  communicationRating: number; // 1 to 5
+  comment?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const SellerReviewSchema = new Schema<ISellerReview>(
+  {
+    listingId: { type: Schema.Types.ObjectId, ref: 'AuctionListing', required: true, index: true },
+    sellerId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    buyerId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    overallRating: { type: Number, required: true, min: 1, max: 5 },
+    itemAccuracyRating: { type: Number, required: true, min: 1, max: 5, default: 5 },
+    communicationRating: { type: Number, required: true, min: 1, max: 5, default: 5 },
+    comment: { type: String, trim: true },
+  },
+  defaultSchemaOptions
+);
+
+SellerReviewSchema.index({ listingId: 1, buyerId: 1 }, { unique: true });
+
+SellerReviewSchema.virtual('buyer', {
+  ref: 'User',
+  localField: 'buyerId',
+  foreignField: '_id',
+  justOne: true,
+});
+
+export const SellerReview: Model<ISellerReview> =
+  mongoose.models.SellerReview || mongoose.model<ISellerReview>('SellerReview', SellerReviewSchema);
+
+// ==========================================
+// 7C. PICKUP APPOINTMENT
+// ==========================================
+export interface IPickupAppointment extends Document {
+  listingId: mongoose.Types.ObjectId;
+  sellerId: mongoose.Types.ObjectId;
+  buyerId: mongoose.Types.ObjectId;
+  slotTime: Date;
+  locationName: string;
+  locationDetails?: string;
+  status: 'PROPOSED' | 'CONFIRMED' | 'RESCHEDULED' | 'CANCELLED' | 'COMPLETED';
+  bookedBy: mongoose.Types.ObjectId;
+  notes?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const PickupAppointmentSchema = new Schema<IPickupAppointment>(
+  {
+    listingId: { type: Schema.Types.ObjectId, ref: 'AuctionListing', required: true, index: true },
+    sellerId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    buyerId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    slotTime: { type: Date, required: true, index: true },
+    locationName: { type: String, required: true },
+    locationDetails: { type: String },
+    status: {
+      type: String,
+      enum: ['PROPOSED', 'CONFIRMED', 'RESCHEDULED', 'CANCELLED', 'COMPLETED'],
+      default: 'PROPOSED',
+      index: true,
+    },
+    bookedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    notes: { type: String },
+  },
+  defaultSchemaOptions
+);
+
+PickupAppointmentSchema.virtual('seller', {
+  ref: 'User',
+  localField: 'sellerId',
+  foreignField: '_id',
+  justOne: true,
+});
+
+PickupAppointmentSchema.virtual('buyer', {
+  ref: 'User',
+  localField: 'buyerId',
+  foreignField: '_id',
+  justOne: true,
+});
+
+export const PickupAppointment: Model<IPickupAppointment> =
+  mongoose.models.PickupAppointment || mongoose.model<IPickupAppointment>('PickupAppointment', PickupAppointmentSchema);
 
 // ==========================================
 // 8. QUESTION & ANSWER

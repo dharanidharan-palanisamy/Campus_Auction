@@ -1,9 +1,21 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { formatINR } from '@/lib/utils';
-import { Sparkles, Send, ShieldAlert, CheckCircle2, ArrowRight } from 'lucide-react';
+import { 
+  Sparkles, 
+  Send, 
+  ShieldAlert, 
+  CheckCircle2, 
+  ArrowRight, 
+  Loader2,
+  Bot,
+  User as UserIcon,
+  HelpCircle,
+  TrendingUp,
+  Gavel
+} from 'lucide-react';
 
 interface Proposal {
   action: string;
@@ -16,25 +28,35 @@ interface Proposal {
   requiresConfirmation: boolean;
 }
 
+const QUICK_PROMPTS = [
+  'Find bicycles under ₹3,000',
+  'Show scientific calculators below ₹800',
+  'What textbooks are ending today?',
+  'Prepare bid of 1500 for mechanical keyboard'
+];
+
 export default function AssistantPage() {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Array<{ sender: 'user' | 'assistant'; text: string; proposal?: Proposal }>>([
     {
       sender: 'assistant',
-      text: `Hello ${user?.campusAlias || 'there'}! I am your Campus Auction Assistant. You can ask me to find items under your budget (e.g. "Find a bicycle under ₹3,000") or prepare a safe bid proposal for you (e.g. "Prepare bid of 2800 on mountain bike").`,
+      text: `Hello ${user?.campusAlias || 'there'}! I am your Campus Auction Assistant. You can ask me to find items within your budget, check price intelligence, or prepare a verified bid proposal with built-in anti-sniping protection.`,
     },
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [confirmedBids, setConfirmedBids] = useState<{ [listingId: string]: boolean }>({});
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const handleSend = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || loading) return;
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, loading]);
 
-    const userText = input.trim();
+  const sendMessage = async (textToSend: string) => {
+    if (!textToSend.trim() || loading) return;
+
     setInput('');
-    setMessages((prev) => [...prev, { sender: 'user', text: userText }]);
+    setMessages((prev) => [...prev, { sender: 'user', text: textToSend }]);
     setLoading(true);
 
     try {
@@ -44,7 +66,7 @@ export default function AssistantPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('campus_token') || ''}`,
         },
-        body: JSON.stringify({ message: userText }),
+        body: JSON.stringify({ message: textToSend }),
       });
 
       const data = await res.json();
@@ -56,7 +78,7 @@ export default function AssistantPage() {
       } else {
         setMessages((prev) => [
           ...prev,
-          { sender: 'assistant', text: 'Sorry, I encountered an issue analyzing the auctions.' },
+          { sender: 'assistant', text: data.message || 'Sorry, I encountered an issue analyzing the auctions.' },
         ]);
       }
     } catch (err) {
@@ -67,6 +89,11 @@ export default function AssistantPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await sendMessage(input);
   };
 
   const handleConfirmBid = async (proposal: Proposal) => {
@@ -90,7 +117,7 @@ export default function AssistantPage() {
           ...prev,
           {
             sender: 'assistant',
-            text: `✅ Authorized & Placed! Your bid of ${formatINR(proposal.proposedAmountInCents)} on "${proposal.title}" has been accepted by the engine.`,
+            text: `Authorized & Placed! Your bid of ${formatINR(proposal.proposedAmountInCents)} on "${proposal.title}" has been successfully recorded on the campus ledger.`,
           },
         ]);
       } else {
@@ -102,113 +129,151 @@ export default function AssistantPage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-10">
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden flex flex-col h-[750px]">
+    <div className="max-w-4xl mx-auto px-4 py-8 sm:py-10">
+      <div className="bg-white rounded-3xl border border-[#E5EAF2] shadow-xl overflow-hidden flex flex-col h-[750px]">
         {/* Header */}
-        <div className="p-5 border-b border-slate-200 bg-gradient-to-r from-indigo-50 to-blue-50 flex items-center justify-between">
+        <div className="p-4 sm:p-5 border-b border-[#E5EAF2] bg-gradient-to-r from-indigo-50/80 via-white to-blue-50/80 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-200">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#5145FF] to-[#3563FF] text-white flex items-center justify-center shadow-md shadow-indigo-100">
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="font-extrabold text-slate-900 text-base">Campus Auction Assistant</h2>
-              <p className="text-xs text-slate-500">Natural language search & verified bid proposals</p>
+              <div className="flex items-center gap-2">
+                <h2 className="font-black text-[#11182D] text-base">Campus Auction Assistant</h2>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Online
+                </span>
+              </div>
+              <p className="text-xs text-[#718096]">Natural language search & verified bid proposals</p>
             </div>
           </div>
-          <div className="text-right">
-            <span className="text-[11px] font-bold text-indigo-700 bg-indigo-100/80 px-2.5 py-1 rounded-full">
+          <div className="hidden sm:block text-right">
+            <span className="text-[11px] font-bold text-[#5145FF] bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">
               Strict Confirmation Guard
             </span>
           </div>
         </div>
 
         {/* Chat message history */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 bg-[#F7F9FC]">
           {messages.map((m, i) => (
             <div
               key={i}
               className={`flex flex-col ${m.sender === 'user' ? 'items-end' : 'items-start'}`}
             >
-              <div
-                className={`max-w-[85%] p-4 rounded-2xl text-sm leading-relaxed ${
-                  m.sender === 'user'
-                    ? 'bg-indigo-600 text-white rounded-br-none shadow-md shadow-indigo-100'
-                    : 'bg-slate-100 text-slate-800 rounded-bl-none'
-                }`}
-              >
-                <div className="whitespace-pre-line">{m.text}</div>
-
-                {/* Structured Bid Proposal Card with Explicit Confirmation */}
-                {m.proposal && (
-                  <div className="mt-4 p-4 rounded-xl bg-white border border-indigo-200 text-slate-900 shadow-sm space-y-3">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                      <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">
-                        Structured Bid Proposal
-                      </span>
-                      <span className="text-[11px] font-semibold text-slate-500">
-                        Requires Confirmation
-                      </span>
-                    </div>
-
-                    <div>
-                      <h4 className="font-bold text-sm text-slate-900">{m.proposal.title}</h4>
-                      <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-                        <div className="bg-slate-50 p-2 rounded-lg">
-                          <span className="text-slate-400 block text-[10px] uppercase font-bold">Leading Bid</span>
-                          <span className="font-bold text-slate-700">{formatINR(m.proposal.currentLeadingBid)}</span>
-                        </div>
-                        <div className="bg-indigo-50 p-2 rounded-lg">
-                          <span className="text-indigo-600 block text-[10px] uppercase font-bold">Proposed Bid</span>
-                          <span className="font-black text-indigo-950 text-sm">{formatINR(m.proposal.proposedAmountInCents)}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {confirmedBids[m.proposal.listingId] ? (
-                      <div className="p-2.5 bg-emerald-50 text-emerald-800 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        Proposal Confirmed & Executed
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => handleConfirmBid(m.proposal!)}
-                        className="w-full py-2.5 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm transition flex items-center justify-center gap-1.5"
-                      >
-                        Authorize & Place Bid: {formatINR(m.proposal.proposedAmountInCents)}
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </button>
-                    )}
+              <div className="flex items-start gap-2 max-w-[90%] sm:max-w-[80%]">
+                {m.sender === 'assistant' && (
+                  <div className="w-7 h-7 rounded-xl bg-gradient-to-tr from-[#5145FF] to-[#3563FF] text-white flex items-center justify-center shrink-0 mt-0.5 text-xs shadow-xs">
+                    <Bot className="w-4 h-4" />
                   </div>
                 )}
+                <div
+                  className={`p-4 rounded-2xl text-xs sm:text-sm leading-relaxed ${
+                    m.sender === 'user'
+                      ? 'bg-[#5145FF] text-white rounded-br-none shadow-sm shadow-indigo-100'
+                      : 'bg-white text-[#151B2C] border border-[#E5EAF2] rounded-bl-none shadow-xs'
+                  }`}
+                >
+                  <div className="whitespace-pre-line">{m.text}</div>
+
+                  {/* Proposal Card */}
+                  {m.proposal && (
+                    <div className="mt-4 p-4 rounded-xl bg-indigo-50/70 border border-indigo-200 text-[#151B2C]">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Gavel className="w-4 h-4 text-[#5145FF]" />
+                        <span className="font-black text-xs text-[#5145FF] uppercase tracking-wider">
+                          Ready for Your Authorization
+                        </span>
+                      </div>
+
+                      <h4 className="font-bold text-sm text-[#11182D] mb-2">{m.proposal.title}</h4>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+                        <div className="bg-white p-2.5 rounded-lg border border-[#E5EAF2]">
+                          <span className="text-[10px] uppercase font-bold text-[#718096] block">Leading Bid</span>
+                          <span className="font-black text-[#151B2C] text-sm">
+                            {formatINR(m.proposal.currentLeadingBid)}
+                          </span>
+                        </div>
+                        <div className="bg-white p-2.5 rounded-lg border border-[#E5EAF2]">
+                          <span className="text-[10px] uppercase font-bold text-[#718096] block">Proposed Bid</span>
+                          <span className="font-black text-[#5145FF] text-sm">
+                            {formatINR(m.proposal.proposedAmountInCents)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {confirmedBids[m.proposal.listingId] ? (
+                        <div className="flex items-center gap-1.5 text-emerald-700 bg-emerald-100/80 p-2.5 rounded-xl font-bold text-xs">
+                          <CheckCircle2 className="w-4 h-4" />
+                          Bid Placed Successfully
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => handleConfirmBid(m.proposal!)}
+                          className="w-full py-2.5 px-4 rounded-xl bg-[#5145FF] hover:bg-[#4338CA] text-white font-bold text-xs transition shadow-xs flex items-center justify-center gap-2 active:scale-[0.98]"
+                        >
+                          Confirm & Submit Bid ({formatINR(m.proposal.proposedAmountInCents)})
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           ))}
 
           {loading && (
-            <div className="flex items-center gap-2 text-slate-400 text-xs italic">
-              <Sparkles className="w-4 h-4 animate-spin text-indigo-500" />
-              Assistant is searching verified campus auctions...
+            <div className="flex items-center gap-2 text-[#718096] text-xs">
+              <div className="w-7 h-7 rounded-xl bg-white border border-[#E5EAF2] flex items-center justify-center">
+                <Loader2 className="w-4 h-4 text-[#5145FF] animate-spin" />
+              </div>
+              <span className="bg-white px-3 py-1.5 rounded-xl border border-[#E5EAF2] text-xs font-semibold">
+                Assistant is thinking...
+              </span>
             </div>
           )}
+
+          <div ref={messagesEndRef} />
         </div>
 
-        {/* Input prompt */}
-        <form onSubmit={handleSend} className="p-4 border-t border-slate-200 bg-white flex gap-2">
-          <input
-            type="text"
-            placeholder="e.g., 'Find calculators below ₹800' or 'Bid 2800 on mountain bike'..."
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            className="flex-1 px-4 py-3 text-sm bg-slate-50 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-          <button
-            type="submit"
-            disabled={!input.trim() || loading}
-            className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-5 rounded-2xl font-bold text-sm shadow-md transition flex items-center gap-1.5"
-          >
-            <Send className="w-4 h-4" />
-            Send
-          </button>
+        {/* Suggestion pills if conversation is short */}
+        {messages.length <= 2 && (
+          <div className="px-4 py-2.5 bg-white border-t border-[#E5EAF2] overflow-x-auto scrollbar-none flex items-center gap-2">
+            <span className="text-[11px] font-bold text-[#718096] shrink-0">Try asking:</span>
+            {QUICK_PROMPTS.map((prompt) => (
+              <button
+                key={prompt}
+                onClick={() => sendMessage(prompt)}
+                className="shrink-0 text-xs font-semibold px-3 py-1 rounded-lg bg-[#F7F9FC] border border-[#E5EAF2] text-[#151B2C] hover:border-indigo-300 hover:text-[#5145FF] transition whitespace-nowrap"
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Input Form */}
+        <form onSubmit={handleSend} className="p-3.5 sm:p-4 bg-white border-t border-[#E5EAF2]">
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              placeholder={user ? "Ask anything: 'Find calculators under 800' or 'Bid 3000 on cycle'..." : "Please log in to chat with Assistant..."}
+              value={input}
+              disabled={loading || !user}
+              onChange={(e) => setInput(e.target.value)}
+              className="flex-1 bg-[#F7F9FC] border border-[#E5EAF2] rounded-xl px-4 py-2.5 text-xs sm:text-sm text-[#151B2C] placeholder:text-[#718096] focus:outline-none focus:border-[#5145FF] focus:ring-2 focus:ring-indigo-100 transition disabled:opacity-60"
+            />
+            <button
+              type="submit"
+              disabled={loading || !input.trim() || !user}
+              className="bg-[#5145FF] hover:bg-[#4338CA] text-white p-2.5 rounded-xl transition shadow-xs disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          </div>
         </form>
       </div>
     </div>

@@ -9,14 +9,16 @@ import {
   Clock, 
   Sparkles, 
   Menu, 
-  X 
+  X,
+  TrendingUp,
+  LayoutGrid
 } from 'lucide-react';
 
 const NavDesktopActions = dynamic(
   () => import('./NavUserActions').then((mod) => mod.NavDesktopActions),
   {
     ssr: false,
-    loading: () => <div className="h-8 w-28 bg-slate-100 rounded-xl animate-pulse" />,
+    loading: () => <div className="h-9 w-28 bg-slate-100 rounded-xl animate-pulse" />,
   }
 );
 
@@ -35,7 +37,7 @@ const NavMobileActions = dynamic(
 
 export function Navbar() {
   return (
-    <Suspense fallback={<header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200 h-16" />}>
+    <Suspense fallback={<header className="sticky top-0 z-50 bg-white border-b border-[#E5EAF2] h-16 shadow-xs" />}>
       <NavbarContent />
     </Suspense>
   );
@@ -66,52 +68,87 @@ function NavbarContent() {
     return null;
   }
 
+  const isAuctionsActive = pathname === '/auctions' && !pathname.includes('closing_soon');
+  const isClosingSoonActive = pathname?.includes('closing_soon');
+  const isAssistantActive = pathname === '/assistant';
+  const isIntelligenceActive = pathname === '/intelligence';
+
   return (
-    <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200">
+    <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-[#E5EAF2] transition-colors shadow-xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          {/* Logo */}
+          {/* Logo & Tagline */}
           <Link
             href="/"
             onClick={() => setMobileMenuOpen(false)}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2.5 group"
           >
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-blue-500 flex items-center justify-center text-white shadow-md shadow-indigo-200">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#633BFF] to-[#536BFF] flex items-center justify-center text-white shadow-md shadow-[#633BFF]/25 group-hover:scale-105 transition-transform">
               <Gavel className="w-5 h-5" />
             </div>
             <div>
-              <span className="font-extrabold text-xl tracking-tight text-slate-900">
-                Campus<span className="text-indigo-600">Bid</span>
+              <span className="font-extrabold text-xl tracking-tight text-[#151B2C]">
+                Campus<span className="text-[#633BFF]">Bid</span>
               </span>
-              <span className="block text-[10px] uppercase font-bold tracking-widest text-slate-400 -mt-1">
-                Verified Marketplace
+              <span className="block text-[9px] uppercase font-black tracking-widest text-[#718096] -mt-1">
+                VERIFIED MARKETPLACE
               </span>
             </div>
           </Link>
 
           {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center gap-6">
-            <Link href="/auctions" className="text-sm font-semibold text-slate-700 hover:text-indigo-600 transition">
-              Product
+          <nav className="hidden md:flex items-center gap-1 lg:gap-2">
+            <Link
+              href="/auctions"
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                isAuctionsActive
+                  ? 'bg-[#F1EEFF] text-[#633BFF] shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              <LayoutGrid className="w-3.5 h-3.5 text-[#633BFF]" />
+              Browse Auctions
             </Link>
+
             <Link
               href="/auctions?closing_soon=true"
-              className="text-sm font-semibold flex items-center gap-1.5 text-amber-600 hover:text-amber-700 transition"
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                isClosingSoonActive
+                  ? 'bg-amber-50 text-amber-700 font-extrabold border border-amber-200 shadow-xs'
+                  : 'text-amber-600 hover:text-amber-700 hover:bg-amber-50'
+              }`}
             >
-              <Clock className="w-4 h-4" />
+              <Clock className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
               Closing Soon
             </Link>
+
             <Link
               href="/assistant"
-              className="text-sm font-semibold flex items-center gap-1.5 text-indigo-600 hover:text-indigo-700 transition"
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                isAssistantActive
+                  ? 'bg-[#F1EEFF] text-[#633BFF] shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
             >
-              <Sparkles className="w-4 h-4" />
+              <Sparkles className="w-3.5 h-3.5 text-[#633BFF]" />
               AI Assistant
+            </Link>
+
+            <Link
+              href="/intelligence"
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                isIntelligenceActive
+                  ? 'bg-[#F1EEFF] text-[#633BFF] shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              <TrendingUp className="w-3.5 h-3.5 text-[#536BFF]" />
+              Price Intelligence
             </Link>
           </nav>
 
           {/* User Controls & Actions */}
-          <div className="hidden md:flex items-center gap-3" suppressHydrationWarning>
+          <div className="hidden md:flex items-center gap-3">
             <NavDesktopActions />
           </div>
 
@@ -119,10 +156,10 @@ function NavbarContent() {
           <div className="md:hidden flex items-center">
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg"
+              className="p-2 text-slate-600 hover:bg-slate-100 rounded-xl transition"
               aria-label="Toggle navigation menu"
             >
-              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              {mobileMenuOpen ? <X className="w-6 h-6 text-slate-800" /> : <Menu className="w-6 h-6 text-slate-800" />}
             </button>
           </div>
         </div>
@@ -130,31 +167,43 @@ function NavbarContent() {
 
       {/* Mobile Drawer */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-t border-slate-200 bg-white px-4 pt-3 pb-6 space-y-3 shadow-lg">
-          <Link
-            href="/auctions"
-            onClick={() => setMobileMenuOpen(false)}
-            className="block py-2 text-base font-semibold text-slate-700 hover:text-indigo-600 transition"
-          >
-            Browse Auctions
-          </Link>
-          <Link
-            href="/auctions?closing_soon=true"
-            onClick={() => setMobileMenuOpen(false)}
-            className="block py-2 text-base font-semibold text-amber-600 hover:text-amber-700 transition"
-          >
-            Closing Soon
-          </Link>
-          <Link
-            href="/assistant"
-            onClick={() => setMobileMenuOpen(false)}
-            className="block py-2 text-base font-semibold text-indigo-600 hover:text-indigo-700 transition"
-          >
-            AI Assistant
-          </Link>
-          <div suppressHydrationWarning>
-            <NavMobileActions onClose={() => setMobileMenuOpen(false)} />
-          </div>
+        <div className="md:hidden bg-white border-b border-[#E5EAF2] px-4 pt-3 pb-5 space-y-3 shadow-xl">
+          <nav className="flex flex-col gap-1">
+            <Link
+              href="/auctions"
+              onClick={() => setMobileMenuOpen(false)}
+              className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 transition"
+            >
+              <LayoutGrid className="w-4 h-4 text-[#633BFF]" />
+              Browse Auctions
+            </Link>
+            <Link
+              href="/auctions?closing_soon=true"
+              onClick={() => setMobileMenuOpen(false)}
+              className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-bold text-amber-600 hover:bg-amber-50 transition"
+            >
+              <Clock className="w-4 h-4 text-amber-500" />
+              Closing Soon
+            </Link>
+            <Link
+              href="/assistant"
+              onClick={() => setMobileMenuOpen(false)}
+              className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 transition"
+            >
+              <Sparkles className="w-4 h-4 text-[#633BFF]" />
+              AI Assistant
+            </Link>
+            <Link
+              href="/intelligence"
+              onClick={() => setMobileMenuOpen(false)}
+              className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 transition"
+            >
+              <TrendingUp className="w-4 h-4 text-[#536BFF]" />
+              Price Intelligence
+            </Link>
+          </nav>
+
+          <NavMobileActions onClose={() => setMobileMenuOpen(false)} />
         </div>
       )}
     </header>

@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { PlusCircle, Upload, CheckCircle2, AlertCircle } from 'lucide-react';
+import { PlusCircle, Upload, CheckCircle2, AlertCircle, Sparkles, TrendingUp, HelpCircle } from 'lucide-react';
 import { ImageDropzone } from '@/components/ImageDropzone';
 
 export default function CreateListingPage() {
@@ -23,6 +23,55 @@ export default function CreateListingPage() {
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  // AI Smart Price Estimator State
+  const [isEstimating, setIsEstimating] = useState(false);
+  const [aiEstimate, setAiEstimate] = useState<{
+    estimatedResalePrice: { min: number; max: number; median: number };
+    recommendedStartingPrice: number;
+    recommendedMinIncrement: number;
+    demandLevel: string;
+    confidenceScore: number;
+    rationale: string;
+  } | null>(null);
+
+  const runPriceEstimator = async () => {
+    if (!title || title.trim().length < 2) {
+      setErrorMsg('Please enter an item title first to get AI price estimates.');
+      return;
+    }
+    setErrorMsg('');
+    setIsEstimating(true);
+    try {
+      const res = await fetch('http://localhost:4000/api/v1/auctions/estimate-price', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          categoryId,
+          condition,
+          description,
+          imageUrl,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setAiEstimate(data.data);
+      } else {
+        setErrorMsg(data.message || 'Could not calculate price estimate.');
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Error connecting to price estimator');
+    } finally {
+      setIsEstimating(false);
+    }
+  };
+
+  const applyAiPricing = () => {
+    if (!aiEstimate) return;
+    setStartingPrice(aiEstimate.recommendedStartingPrice.toString());
+    setMinIncrement(aiEstimate.recommendedMinIncrement.toString());
+  };
 
   useEffect(() => {
     fetch('http://localhost:4000/api/v1/auctions/categories')
@@ -177,6 +226,79 @@ export default function CreateListingPage() {
               onChange={(e) => setDescription(e.target.value)}
               className="w-full px-4 py-2.5 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
+          </div>
+
+          {/* AI Smart Price Estimator Widget */}
+          <div className="bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50 border border-indigo-100 rounded-2xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-indigo-600 rounded-lg text-white">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-indigo-950 uppercase tracking-wider">AI Smart Price Estimator</h3>
+                  <p className="text-[11px] text-slate-500">Predict fair campus resale value based on historical sales & condition</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={runPriceEstimator}
+                disabled={isEstimating || !title}
+                className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white text-xs font-bold rounded-xl transition shadow-sm flex items-center gap-1.5"
+              >
+                {isEstimating ? (
+                  <>Analyzing Market...</>
+                ) : (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Estimate Fair Price
+                  </>
+                )}
+              </button>
+            </div>
+
+            {aiEstimate && (
+              <div className="bg-white/80 backdrop-blur-sm border border-indigo-100 rounded-xl p-3.5 text-xs space-y-3 animate-in fade-in duration-200">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Estimated Resale</span>
+                    <span className="text-sm font-black text-slate-800">₹{aiEstimate.estimatedResalePrice.min} - ₹{aiEstimate.estimatedResalePrice.max}</span>
+                  </div>
+                  <div className="bg-indigo-50/70 p-2.5 rounded-lg border border-indigo-100">
+                    <span className="text-[10px] uppercase font-bold text-indigo-600 block">Suggested Start</span>
+                    <span className="text-sm font-black text-indigo-700">₹{aiEstimate.recommendedStartingPrice}</span>
+                  </div>
+                  <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Min Increment</span>
+                    <span className="text-sm font-black text-slate-800">₹{aiEstimate.recommendedMinIncrement}</span>
+                  </div>
+                  <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Demand Index</span>
+                    <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-black ${
+                      aiEstimate.demandLevel === 'HIGH' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                    }`}>
+                      {aiEstimate.demandLevel} DEMAND
+                    </span>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-slate-600 leading-relaxed italic">
+                  💡 {aiEstimate.rationale}
+                </p>
+
+                <div className="flex items-center justify-between pt-1 border-t border-indigo-50">
+                  <span className="text-[10px] text-slate-400">AI Confidence: {aiEstimate.confidenceScore}% (Estimated values are recommendations)</span>
+                  <button
+                    type="button"
+                    onClick={applyAiPricing}
+                    className="px-3 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold rounded-lg transition text-xs flex items-center gap-1"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Apply Suggested Pricing
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

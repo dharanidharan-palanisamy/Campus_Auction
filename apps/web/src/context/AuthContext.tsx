@@ -9,6 +9,14 @@ export interface User {
   campusAlias: string;
   studentId: string;
   role: 'STUDENT' | 'ADMIN';
+  department?: string;
+  college?: string;
+  phone?: string;
+  bio?: string;
+  avatarUrl?: string;
+  verificationStatus?: string;
+  trustScore?: number;
+  trustTier?: string;
 }
 
 interface AuthContextType {

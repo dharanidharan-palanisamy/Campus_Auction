@@ -84,6 +84,21 @@ export default function StudentDetailPage({ params }: StudentDetailProps) {
     fetchStudent();
   }, [studentId]);
 
+  // Close modals on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowVerifyModal(false);
+        setShowRejectModal(false);
+        setShowSuspendModal(false);
+        setShowReactivateModal(false);
+        setShowDeleteModal(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   const handleVerify = async () => {
     try {
       setActionLoading(true);

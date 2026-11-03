@@ -1,14 +1,53 @@
 @import "tailwindcss";
 
+@theme {
+  --color-cb-primary: #5145FF;
+  --color-cb-secondary: #3563FF;
+  --color-cb-navy: #11182D;
+  --color-cb-bg: #F7F9FC;
+  --color-cb-card: #FFFFFF;
+  --color-cb-text: #151B2C;
+  --color-cb-muted: #718096;
+  --color-cb-border: #E5EAF2;
+  --color-cb-success: #10B981;
+  --color-cb-warning: #F59E0B;
+  --color-cb-error: #EF4444;
+
+  /* Midnight Luxe Palette */
+  --color-midnight-navy: #11102B;
+  --color-deep-purple: #302078;
+  --color-electric-violet: #633BFF;
+  --color-accent-blue: #536BFF;
+  --color-lavender: #F1EEFF;
+  --color-luxe-bg: #F7F8FF;
+  --color-luxe-text: #15152D;
+
+  --font-sans: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --background: #F7F8FF;
+  --foreground: #15152D;
+  --midnight-navy: #11102B;
+  --deep-purple: #302078;
+  --electric-violet: #633BFF;
+  --accent-blue: #536BFF;
+  --lavender: #F1EEFF;
+  --card-bg: #FFFFFF;
+  --border-color: #E5EAF2;
 }
 
 body {
   background-color: var(--background);
   color: var(--foreground);
-  font-family: inherit;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Numeric typography for currency & timers */
+.price-tag, .num-display {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
 }
 
 /* Dark theme inputs & browser autofill contrast fix */

@@ -23,6 +23,11 @@ import {
   answerSchema,
 } from '@campus/shared';
 import { emitAdminEvent } from '../lib/socket';
+import { TrustService } from '../services/trust.service';
+import { HandoverService } from '../services/handover.service';
+import { PricingEstimatorService } from '../services/pricing-estimator.service';
+import { AppointmentService } from '../services/appointment.service';
+import { IntelligenceService } from '../services/intelligence.service';
 
 export const auctionRouter = Router();
 
@@ -638,6 +643,145 @@ auctionRouter.post('/questions/:questionId/answer', authenticateToken, async (re
         },
       },
     });
+  } catch (error: any) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+// ==========================================
+// FEATURE 1: CAMPUS TRUST SCORE & SELLER REPUTATION
+// ==========================================
+auctionRouter.get('/users/:userId/trust', async (req, res) => {
+  try {
+    const profile = await TrustService.getUserTrustProfile(req.params.userId);
+    return res.json({ success: true, data: profile });
+  } catch (error: any) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+auctionRouter.post('/:id/reviews', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { overallRating, itemAccuracyRating, communicationRating, comment } = req.body;
+    const review = await TrustService.submitReview({
+      listingId: req.params.id,
+      buyerId: req.user!.id,
+      overallRating: Number(overallRating) || 5,
+      itemAccuracyRating: Number(itemAccuracyRating) || Number(overallRating) || 5,
+      communicationRating: Number(communicationRating) || Number(overallRating) || 5,
+      comment,
+    });
+    return res.status(201).json({ success: true, data: review, message: 'Review recorded and seller trust score updated.' });
+  } catch (error: any) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+// ==========================================
+// FEATURE 2: QR VERIFIED CAMPUS HANDOVER
+// ==========================================
+auctionRouter.get('/:id/handover/pass', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const pass = await HandoverService.getOrCreateHandoverPass(req.params.id, req.user!.id);
+    return res.json({ success: true, data: pass });
+  } catch (error: any) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+auctionRouter.post('/:id/handover/verify', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { token, code, notes } = req.body;
+    const result = await HandoverService.verifyHandover({
+      listingId: req.params.id,
+      actorUserId: req.user!.id,
+      token,
+      code,
+      notes,
+    });
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+// ==========================================
+// FEATURE 3: AI SMART PRICE ESTIMATOR
+// ==========================================
+auctionRouter.post('/estimate-price', async (req, res) => {
+  try {
+    const { title, categoryId, condition, description, imageUrl } = req.body;
+    if (!title || title.trim().length < 2) {
+      return res.status(400).json({ success: false, message: 'Item title is required for price estimation.' });
+    }
+    const estimate = await PricingEstimatorService.estimatePrice({
+      title,
+      categoryId,
+      condition: condition || 'GOOD',
+      description,
+      imageUrl,
+    });
+    return res.json({ success: true, data: estimate });
+  } catch (error: any) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+// ==========================================
+// FEATURE 4: CAMPUS PICKUP APPOINTMENTS
+// ==========================================
+auctionRouter.get('/:id/appointments', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const data = await AppointmentService.getListingAppointments(req.params.id, req.user!.id);
+    return res.json({ success: true, data });
+  } catch (error: any) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+auctionRouter.post('/:id/appointments', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { slotTime, locationName, locationDetails, notes } = req.body;
+    if (!slotTime || !locationName) {
+      return res.status(400).json({ success: false, message: 'Slot time and location name are required.' });
+    }
+    const appointment = await AppointmentService.bookAppointment({
+      listingId: req.params.id,
+      userId: req.user!.id,
+      slotTime,
+      locationName,
+      locationDetails,
+      notes,
+    });
+    return res.status(201).json({ success: true, data: appointment, message: 'Pickup appointment scheduled successfully.' });
+  } catch (error: any) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+auctionRouter.patch('/appointments/:appointmentId', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { status, newSlotTime, notes } = req.body;
+    const updated = await AppointmentService.updateStatus({
+      appointmentId: req.params.appointmentId,
+      userId: req.user!.id,
+      status: status || 'CONFIRMED',
+      newSlotTime,
+      notes,
+    });
+    return res.json({ success: true, data: updated, message: `Appointment status updated to ${updated.status}` });
+  } catch (error: any) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+// ==========================================
+// FEATURE 5: AUCTION PRICE INTELLIGENCE
+// ==========================================
+auctionRouter.get('/intelligence/overview', async (req, res) => {
+  try {
+    const overview = await IntelligenceService.getMarketOverview();
+    return res.json({ success: true, data: overview });
   } catch (error: any) {
     return res.status(400).json({ success: false, message: error.message });
   }

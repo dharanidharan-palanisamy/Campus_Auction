@@ -6,6 +6,7 @@ import {
   AuctionOutcome,
   SavedListing,
   Notification,
+  User,
 } from '../models';
 import { authenticateToken, AuthRequest } from '../middlewares/auth';
 
@@ -161,5 +162,93 @@ studentRouter.post('/saved-listings/:listingId', async (req: AuthRequest, res) =
     }
   } catch (error: any) {
     return res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+// ==========================================
+// 4. STUDENT PERSONAL DETAILS CRUD
+// ==========================================
+
+// View Full Personal Details
+studentRouter.get('/profile', async (req: AuthRequest, res) => {
+  try {
+    const user = await User.findById(req.user!.id).select('-passwordHash');
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Student profile not found' });
+    }
+    return res.json({ success: true, data: user.toJSON() });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Add / Edit Personal Details
+studentRouter.patch('/profile', async (req: AuthRequest, res) => {
+  try {
+    const { fullName, campusAlias, department, college, phone, bio, avatarUrl } = req.body;
+
+    const user = await User.findById(req.user!.id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Student profile not found' });
+    }
+
+    // Check alias uniqueness if changed
+    if (campusAlias && campusAlias.trim().toLowerCase() !== user.campusAlias.toLowerCase()) {
+      const existing = await User.findOne({
+        campusAlias: campusAlias.trim(),
+        _id: { $ne: user._id },
+      });
+      if (existing) {
+        return res.status(409).json({ success: false, message: 'Campus alias is already taken by another student' });
+      }
+      user.campusAlias = campusAlias.trim();
+    }
+
+    if (fullName && fullName.trim()) user.fullName = fullName.trim();
+    if (department !== undefined) user.department = department.trim();
+    if (college !== undefined) user.college = college.trim();
+    if (phone !== undefined) user.phone = phone.trim();
+    if (bio !== undefined) user.bio = bio.trim();
+    if (avatarUrl !== undefined) user.avatarUrl = avatarUrl.trim();
+
+    await user.save();
+
+    const updated = await User.findById(user._id).select('-passwordHash');
+    return res.json({
+      success: true,
+      data: updated?.toJSON(),
+      message: 'Personal details updated successfully',
+    });
+  } catch (error: any) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+// Delete specific optional detail (phone, bio, department, college, avatarUrl)
+studentRouter.delete('/profile/field/:fieldName', async (req: AuthRequest, res) => {
+  try {
+    const { fieldName } = req.params;
+    const allowedDeletions = ['department', 'college', 'phone', 'bio', 'avatarUrl'];
+
+    if (!allowedDeletions.includes(fieldName)) {
+      return res.status(400).json({
+        success: false,
+        message: `Field '${fieldName}' cannot be deleted. Only optional personal fields can be cleared.`,
+      });
+    }
+
+    const updated = await User.findByIdAndUpdate(
+      req.user!.id,
+      { $unset: { [fieldName]: 1 } },
+      { new: true }
+    ).select('-passwordHash');
+
+    return res.json({
+      success: true,
+      data: updated?.toJSON(),
+      message: `Cleared ${fieldName} successfully`,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
   }
 });
