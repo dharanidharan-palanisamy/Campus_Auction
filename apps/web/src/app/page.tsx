@@ -5,11 +5,9 @@ import Link from 'next/link';
 import { AuctionCard } from '@/components/AuctionCard';
 import { 
   Search, 
-  Sparkles, 
   ShieldCheck, 
   Flame, 
   ArrowRight, 
-  CheckCircle2, 
   Clock, 
   Bike, 
   BookOpen, 
@@ -22,8 +20,7 @@ import {
   HelpCircle,
   PlusCircle,
   QrCode,
-  TrendingUp,
-  Award
+  TrendingUp
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 

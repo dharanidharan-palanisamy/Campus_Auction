@@ -3,20 +3,15 @@
 import React, { useEffect, useState, useCallback, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { formatINR } from '@/lib/utils';
 import { useAdminSocket } from '@/hooks/useAdminSocket';
 import {
   Gavel,
   Search,
   Clock,
-  CheckCircle2,
-  AlertTriangle,
   ExternalLink,
   Loader2,
   ChevronLeft,
   ChevronRight,
-  TrendingUp,
-  History,
   ShieldCheck,
   User,
   Activity

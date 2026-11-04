@@ -5,21 +5,15 @@ import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import {
   Bell,
-  CheckCircle2,
   AlertTriangle,
   Gavel,
   Trophy,
-  Clock,
   QrCode,
   Calendar,
   ExternalLink,
-  ChevronRight,
   Search,
   CheckCheck,
-  ShieldCheck,
-  ArrowRight,
-  X,
-  Filter
+  X
 } from 'lucide-react';
 
 interface NotificationItem {

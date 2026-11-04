@@ -7,5 +7,6 @@ build/
 .env.local
 .env.*.local
 coverage/
+*.tsbuildinfo
 .DS_Store
 Thumbs.db

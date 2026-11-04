@@ -15,12 +15,9 @@ import {
   Trash2,
   ExternalLink,
   Search,
-  Filter,
   CheckCircle2,
   AlertCircle,
   X,
-  ChevronRight,
-  ShieldCheck,
   ImageIcon,
   ArrowUpDown
 } from 'lucide-react';

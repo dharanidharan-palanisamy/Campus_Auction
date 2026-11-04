@@ -6,11 +6,8 @@ import { useAuth } from '@/context/AuthContext';
 import { formatINR } from '@/lib/utils';
 import { 
   User as UserIcon, 
-  Gavel, 
   ShoppingBag, 
-  Clock, 
   Bell, 
-  PlusCircle, 
   ShieldCheck, 
   ArrowRight,
   TrendingUp,
@@ -22,8 +19,7 @@ import {
   Building2,
   FileText,
   Trash2,
-  Plus,
-  Sparkles
+  Plus
 } from 'lucide-react';
 import { StudentProfileModal } from '@/components/StudentProfileModal';
 import { TrustScoreBadge } from '@/components/TrustScoreBadge';

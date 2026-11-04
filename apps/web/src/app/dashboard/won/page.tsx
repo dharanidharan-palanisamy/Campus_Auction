@@ -10,15 +10,9 @@ import {
   ShieldCheck,
   MapPin,
   Clock,
-  Calendar,
   CheckCircle2,
-  AlertCircle,
   ExternalLink,
-  ChevronRight,
   TrendingUp,
-  User,
-  Sparkles,
-  HelpCircle,
   Search,
   ImageIcon
 } from 'lucide-react';

@@ -28,12 +28,9 @@ import {
   Heart,
   Share2,
   Maximize2,
-  ChevronRight,
-  Shield,
   HelpCircle,
   Calendar,
   Sparkles,
-  Info,
   Trophy,
   Lock
 } from 'lucide-react';
