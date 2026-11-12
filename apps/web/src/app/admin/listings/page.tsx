@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useAdminSocket } from '@/hooks/useAdminSocket';
+import { API_BASE } from '@/lib/api';
 import {
   Package,
   Search,
@@ -67,7 +68,6 @@ function AdminListingsContent() {
   const [deleteModal, setDeleteModal] = useState<{ id: string; title: string } | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
 
   // Fetch categories
   useEffect(() => {

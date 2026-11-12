@@ -5,6 +5,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
+import path from 'path';
 
 import { connectDatabase, disconnectDatabase } from './config/database';
 import { initSocket } from './lib/socket';
@@ -14,7 +15,10 @@ import { studentRouter } from './routes/student.routes';
 import { adminRouter } from './routes/admin.routes';
 import { assistantRouter } from './routes/assistant.routes';
 
+// Load environment variables from current directory, apps/api/.env, or root .env
 dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 const app = express();
 const server = http.createServer(app);
@@ -22,8 +26,13 @@ const server = http.createServer(app);
 const isAllowedOrigin = (origin: string | undefined): boolean => {
   if (!origin) return true;
   if (origin === 'http://localhost:3000' || origin === 'http://127.0.0.1:3000') return true;
-  if (origin === process.env.CLIENT_ORIGIN) return true;
   if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
+  // Allow all Vercel domains (production & preview deployments)
+  if (/^https:\/\/.*\.vercel\.app$/.test(origin)) return true;
+  if (process.env.CLIENT_ORIGIN) {
+    const origins = process.env.CLIENT_ORIGIN.split(',').map((o) => o.trim());
+    if (origins.includes(origin) || origins.includes('*')) return true;
+  }
   return false;
 };
 

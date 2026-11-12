@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { PlusCircle, Upload, CheckCircle2, AlertCircle, Sparkles, TrendingUp, HelpCircle } from 'lucide-react';
 import { ImageDropzone } from '@/components/ImageDropzone';
+import { API_BASE } from '@/lib/api';
 
 export default function CreateListingPage() {
   const router = useRouter();
@@ -43,7 +44,7 @@ export default function CreateListingPage() {
     setErrorMsg('');
     setIsEstimating(true);
     try {
-      const res = await fetch('http://localhost:4000/api/v1/auctions/estimate-price', {
+      const res = await fetch(`${API_BASE}/auctions/estimate-price`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -74,7 +75,7 @@ export default function CreateListingPage() {
   };
 
   useEffect(() => {
-    fetch('http://localhost:4000/api/v1/auctions/categories')
+    fetch(`${API_BASE}/auctions/categories`)
       .then(res => res.json())
       .then(data => {
         if (data.success && data.data.length > 0) {
@@ -111,7 +112,7 @@ export default function CreateListingPage() {
     try {
       const closingTime = new Date(Date.now() + parseInt(durationHours, 10) * 3600 * 1000).toISOString();
 
-      const res = await fetch('http://localhost:4000/api/v1/auctions', {
+      const res = await fetch(`${API_BASE}/auctions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

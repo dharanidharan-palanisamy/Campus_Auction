@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useAdminSocket } from '@/hooks/useAdminSocket';
+import { API_BASE } from '@/lib/api';
 import {
   Gavel,
   Search,
@@ -53,7 +54,6 @@ function AdminAuctionsContent() {
   const [timelineData, setTimelineData] = useState<{ events: any[]; bids: any[] } | null>(null);
   const [timelineLoading, setTimelineLoading] = useState(false);
 
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
 
   const fetchAuctions = async () => {
     try {

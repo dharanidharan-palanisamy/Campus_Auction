@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { formatINR } from '@/lib/utils';
+import { API_BASE } from '@/lib/api';
 import { 
   Sparkles, 
   Send, 
@@ -60,7 +61,7 @@ export default function AssistantPage() {
     setLoading(true);
 
     try {
-      const res = await fetch('http://localhost:4000/api/v1/assistant/chat', {
+      const res = await fetch(`${API_BASE}/assistant/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -98,7 +99,7 @@ export default function AssistantPage() {
 
   const handleConfirmBid = async (proposal: Proposal) => {
     try {
-      const res = await fetch('http://localhost:4000/api/v1/assistant/confirm', {
+      const res = await fetch(`${API_BASE}/assistant/confirm`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { API_BASE } from '@/lib/api';
 import {
   Shield,
   User,
@@ -38,7 +39,6 @@ export default function AdminProfilePage() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
 
   const fetchProfile = async () => {
     try {

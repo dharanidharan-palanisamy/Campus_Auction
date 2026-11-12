@@ -38,9 +38,9 @@ interface AuthContextType {
   setAdminUserDirectly: (user: User | null, token: string | null) => void;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+import { API_BASE } from '@/lib/api';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function getAdminToken(): string | null {
   if (typeof window === 'undefined') return null;
@@ -189,7 +189,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       return { success: false, message: data.message || 'Login failed' };
     } catch (err: any) {
-      return { success: false, message: err.message || 'Network error' };
+      const isNetworkFail = err?.name === 'TypeError' || err?.message?.includes('fetch') || err?.message?.includes('NetworkError');
+      const msg = isNetworkFail
+        ? 'Cannot reach backend server. Please verify your backend API is deployed and NEXT_PUBLIC_API_URL is configured.'
+        : err.message || 'Network error';
+      return { success: false, message: msg };
     }
   };
 
@@ -210,7 +214,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       return { success: false, message: data.message || 'Registration failed' };
     } catch (err: any) {
-      return { success: false, message: err.message || 'Network error' };
+      const isNetworkFail = err?.name === 'TypeError' || err?.message?.includes('fetch') || err?.message?.includes('NetworkError');
+      const msg = isNetworkFail
+        ? 'Cannot reach backend server. Please verify your backend API is deployed and NEXT_PUBLIC_API_URL is configured.'
+        : err.message || 'Network error';
+      return { success: false, message: msg };
     }
   };
 
@@ -252,7 +260,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       return { success: false, message: data.message || 'Admin login failed' };
     } catch (err: any) {
-      return { success: false, message: err.message || 'Network error' };
+      const isNetworkFail = err?.name === 'TypeError' || err?.message?.includes('fetch') || err?.message?.includes('NetworkError');
+      const msg = isNetworkFail
+        ? 'Cannot reach backend server. Please verify your backend API is deployed and NEXT_PUBLIC_API_URL is configured.'
+        : err.message || 'Network error';
+      return { success: false, message: msg };
     }
   };
 

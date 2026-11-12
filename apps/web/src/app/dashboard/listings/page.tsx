@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { formatINR, getTimeRemaining } from '@/lib/utils';
+import { API_BASE } from '@/lib/api';
 import {
   Package,
   PlusCircle,
@@ -79,10 +80,10 @@ export default function MyListingsPage() {
     try {
       setLoading(true);
       const [dashRes, catRes] = await Promise.all([
-        fetch('http://localhost:4000/api/v1/student/dashboard', {
+        fetch(`${API_BASE}/student/dashboard`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
-        fetch('http://localhost:4000/api/v1/auctions/categories'),
+        fetch(`${API_BASE}/auctions/categories`),
       ]);
 
       const dashData = await dashRes.json();
@@ -182,7 +183,7 @@ export default function MyListingsPage() {
     }
 
     try {
-      const res = await fetch(`http://localhost:4000/api/v1/auctions/${editingListing.id}`, {
+      const res = await fetch(`${API_BASE}/auctions/${editingListing.id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -217,7 +218,7 @@ export default function MyListingsPage() {
     setDeletingId(listingId);
     const token = localStorage.getItem('campus_token');
     try {
-      const res = await fetch(`http://localhost:4000/api/v1/auctions/${listingId}`, {
+      const res = await fetch(`${API_BASE}/auctions/${listingId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token || ''}` },
       });

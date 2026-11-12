@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { AuctionCard } from '@/components/AuctionCard';
+import { API_BASE } from '@/lib/api';
 import { 
   Search, 
   SlidersHorizontal, 
@@ -53,7 +54,7 @@ function BrowseAuctionsContent() {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
   useEffect(() => {
-    fetch('http://localhost:4000/api/v1/auctions/categories')
+    fetch(`${API_BASE}/auctions/categories`)
       .then(res => res.json())
       .then(data => { if (data.success) setCategories(data.data); })
       .catch(err => console.error('Failed to fetch categories:', err));
@@ -86,7 +87,7 @@ function BrowseAuctionsContent() {
     }
     params.set('limit', '40');
 
-    fetch(`http://localhost:4000/api/v1/auctions?${params.toString()}`)
+    fetch(`${API_BASE}/auctions?${params.toString()}`)
       .then(res => res.json())
       .then(data => {
         if (data.success) setAuctions(data.data);

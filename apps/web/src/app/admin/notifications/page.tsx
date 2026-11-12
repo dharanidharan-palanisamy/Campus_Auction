@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { API_BASE } from '@/lib/api';
 import {
   Bell,
   Send,
@@ -33,7 +34,6 @@ export default function AdminNotificationsPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
 
   const fetchNotifications = async () => {
     try {

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { ShieldCheck, Star, Award, CheckCircle2, MessageCircle, X } from 'lucide-react';
+import { API_BASE } from '@/lib/api';
 
 interface TrustProfileProps {
   userId: string;
@@ -15,7 +16,7 @@ export function TrustScoreBadge({ userId, sellerAlias }: TrustProfileProps) {
 
   useEffect(() => {
     if (!userId) return;
-    fetch(`http://localhost:4000/api/v1/auctions/users/${userId}/trust`)
+    fetch(`${API_BASE}/auctions/users/${userId}/trust`)
       .then((res) => res.json())
       .then((data) => {
         if (data.success) {

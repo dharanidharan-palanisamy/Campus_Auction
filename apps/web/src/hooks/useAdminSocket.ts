@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { SOCKET_SERVER_URL } from '@/lib/api';
 
 export interface AdminEventNotification {
   id: string;
@@ -12,7 +13,6 @@ export interface AdminEventNotification {
   meta?: any;
 }
 
-const SOCKET_SERVER_URL = process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '') || 'http://localhost:4000';
 
 // Global singleton socket to prevent duplicate connections across AdminLayout & Admin pages
 let sharedSocket: Socket | null = null;

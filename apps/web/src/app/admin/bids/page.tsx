@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { API_BASE } from '@/lib/api';
 import {
   Gavel,
   Search,
@@ -25,7 +26,6 @@ export default function AdminBidsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
 
   const fetchBids = async () => {
     try {

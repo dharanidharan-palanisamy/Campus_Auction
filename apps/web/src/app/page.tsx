@@ -23,6 +23,7 @@ import {
   TrendingUp
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { API_BASE } from '@/lib/api';
 
 const SEARCH_SUGGESTIONS = [
   'Bicycles',
@@ -56,8 +57,8 @@ export default function HomePage() {
     async function loadData() {
       try {
         const [auctionsRes, catRes] = await Promise.all([
-          fetch('http://localhost:4000/api/v1/auctions?limit=12'),
-          fetch('http://localhost:4000/api/v1/auctions/categories')
+          fetch(`${API_BASE}/auctions?limit=12`),
+          fetch(`${API_BASE}/auctions/categories`)
         ]);
         const auctionsData = await auctionsRes.json();
         const catData = await catRes.json();

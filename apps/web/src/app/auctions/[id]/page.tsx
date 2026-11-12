@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 
 import { Suspense } from 'react';
+import { API_BASE, SOCKET_SERVER_URL } from '@/lib/api';
 import { ImageDropzone } from '@/components/ImageDropzone';
 import { TrustScoreBadge } from '@/components/TrustScoreBadge';
 import { HandoverPassModal } from '@/components/HandoverPassModal';
@@ -100,7 +101,7 @@ function AuctionDetailContent() {
   // Fetch initial details
   const fetchAuction = async () => {
     try {
-      const res = await fetch(`http://localhost:4000/api/v1/auctions/${id}`);
+      const res = await fetch(`${API_BASE}/auctions/${id}`);
       const data = await res.json();
       if (data.success) {
         setAuction(data.data);
@@ -121,7 +122,7 @@ function AuctionDetailContent() {
 
   // Fetch categories for edit form
   useEffect(() => {
-    fetch('http://localhost:4000/api/v1/auctions/categories')
+    fetch(`${API_BASE}/auctions/categories`)
       .then(res => res.json())
       .then(data => {
         if (data.success) setCategories(data.data);
@@ -155,7 +156,7 @@ function AuctionDetailContent() {
 
   // Socket.IO live updates
   useEffect(() => {
-    const socket: Socket = io('http://localhost:4000');
+    const socket: Socket = io(SOCKET_SERVER_URL);
     socket.emit('join_auction', id);
 
     socket.on('auction:bid-accepted', (payload: any) => {
@@ -311,7 +312,7 @@ function AuctionDetailContent() {
         payload.minIncrementInCents = Math.round(parsedInc * 100);
       }
 
-      const res = await fetch(`http://localhost:4000/api/v1/auctions/${id}`, {
+      const res = await fetch(`${API_BASE}/auctions/${id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -341,7 +342,7 @@ function AuctionDetailContent() {
     setErrorMsg('');
 
     try {
-      const res = await fetch(`http://localhost:4000/api/v1/auctions/${id}`, {
+      const res = await fetch(`${API_BASE}/auctions/${id}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('campus_token') || ''}`,
@@ -382,7 +383,7 @@ function AuctionDetailContent() {
     setIsSubmittingBid(true);
 
     try {
-      const res = await fetch(`http://localhost:4000/api/v1/auctions/${id}/bids`, {
+      const res = await fetch(`${API_BASE}/auctions/${id}/bids`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -421,7 +422,7 @@ function AuctionDetailContent() {
     if (!newQuestion.trim()) return;
 
     try {
-      const res = await fetch(`http://localhost:4000/api/v1/auctions/${id}/questions`, {
+      const res = await fetch(`${API_BASE}/auctions/${id}/questions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

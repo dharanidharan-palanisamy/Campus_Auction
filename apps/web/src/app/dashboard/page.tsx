@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { StudentProfileModal } from '@/components/StudentProfileModal';
 import { TrustScoreBadge } from '@/components/TrustScoreBadge';
+import { API_BASE } from '@/lib/api';
 
 export default function DashboardPage() {
   const { user, setUserDirectly } = useAuth();
@@ -37,7 +38,7 @@ export default function DashboardPage() {
     const token = localStorage.getItem('campus_token');
     if (!token) return;
     try {
-      const res = await fetch('http://localhost:4000/api/v1/student/profile', {
+      const res = await fetch(`${API_BASE}/student/profile`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const resData = await res.json();
@@ -58,7 +59,7 @@ export default function DashboardPage() {
 
     fetchProfile();
 
-    fetch('http://localhost:4000/api/v1/student/dashboard', {
+    fetch(`${API_BASE}/student/dashboard`, {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then(res => res.json())
@@ -81,7 +82,7 @@ export default function DashboardPage() {
     if (!confirm(`Are you sure you want to remove this ${fieldName}?`)) return;
     const token = localStorage.getItem('campus_token');
     try {
-      const res = await fetch(`http://localhost:4000/api/v1/student/profile/field/${fieldName}`, {
+      const res = await fetch(`${API_BASE}/student/profile/field/${fieldName}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token || ''}` }
       });

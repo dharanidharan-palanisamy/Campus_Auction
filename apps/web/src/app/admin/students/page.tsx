@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { API_BASE } from '@/lib/api';
 import { useAdminSocket } from '@/hooks/useAdminSocket';
 import { 
   Users, 
@@ -96,7 +97,7 @@ function StudentsManagementContent() {
       params.set('page', page.toString());
       params.set('limit', limit.toString());
 
-      const res = await fetch(`http://localhost:4000/api/v1/admin/students?${params.toString()}`, {
+      const res = await fetch(`${API_BASE}/admin/students?${params.toString()}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -167,7 +168,7 @@ function StudentsManagementContent() {
     if (!selectedForVerify) return;
     setIsVerifying(true);
     try {
-      const res = await fetch(`http://localhost:4000/api/v1/admin/students/${selectedForVerify.id}/verify`, {
+      const res = await fetch(`${API_BASE}/admin/students/${selectedForVerify.id}/verify`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -195,7 +196,7 @@ function StudentsManagementContent() {
     if (!selectedForReject || !rejectReason.trim()) return;
     setIsRejecting(true);
     try {
-      const res = await fetch(`http://localhost:4000/api/v1/admin/students/${selectedForReject.id}/reject-verification`, {
+      const res = await fetch(`${API_BASE}/admin/students/${selectedForReject.id}/reject-verification`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -223,7 +224,7 @@ function StudentsManagementContent() {
     if (!selectedForSuspend || !suspendReason.trim()) return;
     setIsSuspending(true);
     try {
-      const res = await fetch(`http://localhost:4000/api/v1/admin/students/${selectedForSuspend.id}/suspend`, {
+      const res = await fetch(`${API_BASE}/admin/students/${selectedForSuspend.id}/suspend`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -252,7 +253,7 @@ function StudentsManagementContent() {
 
   const handleReactivateStudent = async (student: any) => {
     try {
-      const res = await fetch(`http://localhost:4000/api/v1/admin/students/${student.id}/reactivate`, {
+      const res = await fetch(`${API_BASE}/admin/students/${student.id}/reactivate`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -276,7 +277,7 @@ function StudentsManagementContent() {
     if (!selectedForDelete) return;
     setIsDeleting(true);
     try {
-      const res = await fetch(`http://localhost:4000/api/v1/admin/students/${selectedForDelete.id}`, {
+      const res = await fetch(`${API_BASE}/admin/students/${selectedForDelete.id}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -302,7 +303,7 @@ function StudentsManagementContent() {
     if (search) params.set('search', search);
     if (statusTab !== 'ALL') params.set('status', statusTab);
     if (department) params.set('department', department);
-    window.open(`http://localhost:4000/api/v1/admin/students/export?${params.toString()}`, '_blank');
+    window.open(`${API_BASE}/admin/students/export?${params.toString()}`, '_blank');
   };
 
   return (

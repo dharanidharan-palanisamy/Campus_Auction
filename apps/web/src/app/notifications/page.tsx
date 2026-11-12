@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
+import { API_BASE } from '@/lib/api';
 import {
   Bell,
   AlertTriangle,
@@ -51,7 +52,7 @@ export default function NotificationsPage() {
 
     try {
       setLoading(true);
-      const res = await fetch('http://localhost:4000/api/v1/student/notifications', {
+      const res = await fetch(`${API_BASE}/student/notifications`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
@@ -76,7 +77,7 @@ export default function NotificationsPage() {
 
     try {
       setActionInProgress(id);
-      const res = await fetch(`http://localhost:4000/api/v1/student/notifications/${id}/read`, {
+      const res = await fetch(`${API_BASE}/student/notifications/${id}/read`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -104,7 +105,7 @@ export default function NotificationsPage() {
       setActionInProgress('all');
       await Promise.all(
         unread.map(n =>
-          fetch(`http://localhost:4000/api/v1/student/notifications/${n.id}/read`, {
+          fetch(`${API_BASE}/student/notifications/${n.id}/read`, {
             method: 'PATCH',
             headers: { Authorization: `Bearer ${token}` },
           })

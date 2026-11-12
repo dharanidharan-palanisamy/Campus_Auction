@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { formatINR } from '@/lib/utils';
+import { API_BASE } from '@/lib/api';
 import { useAdminSocket } from '@/hooks/useAdminSocket';
 import { 
   Users, 
@@ -38,7 +39,7 @@ export default function AdminDashboardPage() {
     setLoading(true);
     setErrorMsg('');
     try {
-      const res = await fetch(`http://localhost:4000/api/v1/admin/stats?range=${selectedRange}`, {
+      const res = await fetch(`${API_BASE}/admin/stats?range=${selectedRange}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();

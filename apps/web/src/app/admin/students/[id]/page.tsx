@@ -3,6 +3,7 @@
 import React, { useEffect, useState, use } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { API_BASE } from '@/lib/api';
 import {
   ArrowLeft,
   UserCheck,
@@ -58,7 +59,6 @@ export default function StudentDetailPage({ params }: StudentDetailProps) {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
 
   const fetchStudent = async () => {
     try {

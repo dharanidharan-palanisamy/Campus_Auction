@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { QrCode, CheckCircle2, AlertCircle, Clock, MapPin, X, ShieldCheck } from 'lucide-react';
+import { API_BASE } from '@/lib/api';
 
 interface HandoverPassModalProps {
   listingId: string;
@@ -43,7 +44,7 @@ export function HandoverPassModal({
     setErrorMsg('');
     try {
       const token = localStorage.getItem('campus_token');
-      const res = await fetch(`http://localhost:4000/api/v1/auctions/${listingId}/handover/pass`, {
+      const res = await fetch(`${API_BASE}/auctions/${listingId}/handover/pass`, {
         headers: {
           Authorization: `Bearer ${token || ''}`,
         },
@@ -72,7 +73,7 @@ export function HandoverPassModal({
     setErrorMsg('');
     try {
       const token = localStorage.getItem('campus_token');
-      const res = await fetch(`http://localhost:4000/api/v1/auctions/${listingId}/handover/verify`, {
+      const res = await fetch(`${API_BASE}/auctions/${listingId}/handover/verify`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

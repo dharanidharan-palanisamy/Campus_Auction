@@ -15,6 +15,7 @@ import {
   ArrowLeft
 } from 'lucide-react';
 import { formatINR } from '@/lib/utils';
+import { API_BASE } from '@/lib/api';
 
 export default function PriceIntelligencePage() {
   const [data, setData] = useState<any>(null);
@@ -22,7 +23,7 @@ export default function PriceIntelligencePage() {
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
-    fetch('http://localhost:4000/api/v1/auctions/intelligence/overview')
+    fetch(`${API_BASE}/auctions/intelligence/overview`)
       .then((res) => res.json())
       .then((resData) => {
         if (resData.success) {

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Calendar, Clock, MapPin, CheckCircle2, AlertCircle, Plus, ChevronRight, ShieldCheck } from 'lucide-react';
+import { API_BASE } from '@/lib/api';
 
 interface PickupAppointmentCardProps {
   listingId: string;
@@ -23,7 +24,7 @@ export function PickupAppointmentCard({ listingId }: PickupAppointmentCardProps)
   const fetchAppointments = async () => {
     try {
       const token = localStorage.getItem('campus_token');
-      const res = await fetch(`http://localhost:4000/api/v1/auctions/${listingId}/appointments`, {
+      const res = await fetch(`${API_BASE}/auctions/${listingId}/appointments`, {
         headers: {
           Authorization: `Bearer ${token || ''}`,
         },
@@ -56,7 +57,7 @@ export function PickupAppointmentCard({ listingId }: PickupAppointmentCardProps)
 
     try {
       const token = localStorage.getItem('campus_token');
-      const res = await fetch(`http://localhost:4000/api/v1/auctions/${listingId}/appointments`, {
+      const res = await fetch(`${API_BASE}/auctions/${listingId}/appointments`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

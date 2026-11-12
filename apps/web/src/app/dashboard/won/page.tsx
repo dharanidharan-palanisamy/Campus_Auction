@@ -17,6 +17,7 @@ import {
   ImageIcon
 } from 'lucide-react';
 import { HandoverPassModal } from '@/components/HandoverPassModal';
+import { API_BASE } from '@/lib/api';
 
 interface WonAuctionItem {
   id: string;
@@ -64,7 +65,7 @@ export default function ItemsWonPage() {
 
     try {
       setLoading(true);
-      const res = await fetch('http://localhost:4000/api/v1/student/dashboard', {
+      const res = await fetch(`${API_BASE}/student/dashboard`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const resData = await res.json();

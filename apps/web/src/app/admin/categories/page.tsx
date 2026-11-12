@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { API_BASE } from '@/lib/api';
 import {
   Tag,
   Plus,
@@ -40,7 +41,6 @@ export default function AdminCategoriesPage() {
   // Delete modal
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
 
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
 
   const fetchCategories = async () => {
     try {

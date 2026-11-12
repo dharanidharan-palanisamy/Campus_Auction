@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { API_BASE } from '@/lib/api';
 import { 
   User, 
   Mail, 
@@ -80,7 +81,7 @@ export function StudentProfileModal({
 
     try {
       const token = localStorage.getItem('campus_token');
-      const res = await fetch('http://localhost:4000/api/v1/student/profile', {
+      const res = await fetch(`${API_BASE}/student/profile`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -122,7 +123,7 @@ export function StudentProfileModal({
     setErrorMsg('');
     try {
       const token = localStorage.getItem('campus_token');
-      const res = await fetch(`http://localhost:4000/api/v1/student/profile/field/${fieldName}`, {
+      const res = await fetch(`${API_BASE}/student/profile/field/${fieldName}`, {
         method: 'DELETE',
         headers: {
           Authorization: `Bearer ${token || ''}`,
