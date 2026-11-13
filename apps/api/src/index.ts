@@ -91,18 +91,19 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 const PORT = process.env.PORT || 4000;
 
 if (process.env.NODE_ENV !== 'test') {
+  const listenPort = Number(PORT) || 4000;
   // Connect to MongoDB before accepting connections
   connectDatabase()
     .then(() => {
-      server.listen(PORT, () => {
-        console.log(`🚀 Campus Auction API & Socket.IO running on port ${PORT}`);
+      server.listen(listenPort, '0.0.0.0', () => {
+        console.log(`🚀 Campus Auction API & Socket.IO running on 0.0.0.0:${listenPort}`);
       });
     })
     .catch((err) => {
       console.error('Failed to connect to MongoDB on startup:', err);
       // Still listen so healthcheck / error responses work
-      server.listen(PORT, () => {
-        console.log(`⚠️ Campus Auction API running on port ${PORT} (Database pending connection)`);
+      server.listen(listenPort, '0.0.0.0', () => {
+        console.log(`⚠️ Campus Auction API running on 0.0.0.0:${listenPort} (Database pending connection)`);
       });
     });
 }
