@@ -288,7 +288,7 @@ auctionRouter.post('/', authenticateToken, async (req: AuthRequest, res) => {
       closingTime: new Date(validated.closingTime),
       pickupLocation: validated.pickupLocation,
       sellerNotes: validated.sellerNotes,
-      images: validated.imageUrls.map((url, index) => ({
+      images: validated.imageUrls.map((url: string, index: number) => ({
         url,
         displayOrder: index,
       })),
@@ -358,7 +358,7 @@ const updateListingHandler = async (req: AuthRequest, res: any) => {
     }
 
     if (validated.imageUrls && validated.imageUrls.length > 0) {
-      listing.images = validated.imageUrls.map((url, index) => ({
+      listing.images = validated.imageUrls.map((url: string, index: number) => ({
         url,
         displayOrder: index,
       }));
